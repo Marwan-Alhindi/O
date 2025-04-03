@@ -1,17 +1,31 @@
 import { Outlet } from 'react-router-dom'
 import Navigation from './components/Navigation'
 import Landing from './pages/Landing'
+import { useState } from 'react'
 
 function MarketingLayout() {
+  const [isMobile, setIsMobile] = useState(false);
+
   return (
     <div className="bg-black">
       <div>
-        <Navigation/>
-        <div className="h-screen overflow-y-auto border-x border-x-neutral-800 border-solid md:mx-75">
-            <div className="h-screen overflow-y-auto mx-30 md:mx-75 h-screen border-x border-x-neutral-800 border-dashed overflow-y-auto">
-            {/* <Landing /> */}
+        <Navigation isMobile={isMobile} setIsMobile={setIsMobile}/>
+
+        {!isMobile && (
+          <div className="relative h-screen w-full overflow-y-auto bg-black">
+            {/* Margin wrapper for all vertical lines */}
+            <div className="h-full relative sm:mx-20 md:mx-40">
+              {/* Outer solid borders */}
+              <div className="absolute top-0 bottom-0 left-0 w-px bg-neutral-800" />
+              <div className="absolute top-0 bottom-0 right-0 w-px bg-neutral-800" />
+
+              {/* Dashed borders at 25%, 50%, 75% */}
+              <div className="absolute top-0 bottom-0 left-1/4 w-px border-l border-dashed border-neutral-800" />
+              <div className="absolute top-0 bottom-0 left-1/2 w-px border-l border-dashed border-neutral-800" />
+              <div className="absolute top-0 bottom-0 left-3/4 w-px border-l border-dashed border-neutral-800" />
             </div>
-        </div>
+          </div>
+        )}
       </div>
 
       <Outlet /> {/* Renders child routes */}

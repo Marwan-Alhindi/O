@@ -1,14 +1,10 @@
-import { useState } from "react"
-
-function Navigation () {
-    const [isMobile, setIsMobile] = useState(false);
-
-    return (
+function Navigation({ isMobile, setIsMobile }) {    
+return (
         <div>
             
-            <div className="md:flex justify-between items-center py-4 px-8 lg:px-20 w-full border-b border-b-neutral-800 border-solid">                
-                <div className="flex flex-row justify-between">
-                    <div className="sm:flex flex-row gap-x-4 items-center text-white md:ml-20">
+            <div className="relative border-b border-b-neutral-800 border-solid md:flex justify-between items-center py-4 px-8 lg:px-20 w-full">                
+                <div className="flex flex-row justify-between lg:ml-8">
+                    <div className="flex flex-row gap-x-4 items-center text-white md:ml-20">
                         <img src="/public/logo-white.png" height={40} width={40}></img>
                         <button>LangPulse</button>
                     </div>
@@ -22,23 +18,24 @@ function Navigation () {
                     <button>More</button>
                 </div>
 
-                <div className="hidden md:flex flex-row text-white gap-x-10">
+                <div className="hidden md:flex flex-row text-white gap-x-10 mr-20">
                     <button>Log in</button>
                     <button className="md:bg-white text-black p-2 rounded-full">Get Started</button>
                 </div>
             </div>
 
             {isMobile && (
-                <div className="absolute w-full text-white flex flex-col items-center justify-between h-screen">
-                    <div className="flex flex-col justify-between mt-8 gap-y-8">
-                        <button>More</button>
-                        <button>Docs</button>
-                    </div>
+                <div className="absolute h-screen bg-black w-full text-white flex flex-col items-center justify-between border-t border-t-neutral-800 border-solid">
+                {/* Adjust the top offset (64px) to match your nav height */}
+                <div className="flex flex-col justify-between mt-8 gap-y-8">
+                    <button>More</button>
+                    <button>Docs</button>
+                </div>
 
-                    <div className="flex flex-col justify-between mb-8 gap-y-8">
-                        <button className="py-4 px-30 border border-white border-solid rounded-full">Log In</button>
-                        <button className="bg-white py-4 px-30 border border-white border-solid rounded-full text-black">Get Started</button>
-                    </div>
+                <div className="flex flex-col justify-between mb-8 gap-y-8">
+                    <button className="py-4 px-8 border border-white border-solid rounded-full">Log In</button>
+                    <button className="bg-white py-4 px-8 border border-white border-solid rounded-full text-black">Get Started</button>
+                </div>
                 </div>
             )}
         </div>
