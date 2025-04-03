@@ -23,12 +23,11 @@ function MarketingLayout() {
               <div className="absolute top-0 bottom-0 left-1/4 w-px border-l border-dashed border-neutral-800" />
               <div className="absolute top-0 bottom-0 left-1/2 w-px border-l border-dashed border-neutral-800" />
               <div className="absolute top-0 bottom-0 left-3/4 w-px border-l border-dashed border-neutral-800" />
+              <Outlet /> {/* Renders child routes */}
             </div>
           </div>
         )}
       </div>
-
-      <Outlet /> {/* Renders child routes */}
     </div>
   )
 }

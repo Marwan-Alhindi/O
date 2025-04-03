@@ -1,7 +1,8 @@
 function Hero () {
     return (
         <div>
-            <div>
+            <div className="text-white">
+                This is hero!
             </div>
 
             <div>
