@@ -7,8 +7,10 @@ function MarketingLayout() {
   const [isMobile, setIsMobile] = useState(false);
 
   return (
-    <div className="bg-black">
+    <div className="bg-black ">
+      <div className="absolute bottom-0 left-0 w-[30vw] h-[400vh] bg-white opacity-5 blur-[600px] rounded-full pointer-events-none z-10" />
       <div>
+        {/* White gradient from bottom-left corner */}
         <Navigation isMobile={isMobile} setIsMobile={setIsMobile}/>
 
         {!isMobile && (
@@ -28,6 +30,7 @@ function MarketingLayout() {
           </div>
         )}
       </div>
+      
     </div>
   )
 }
