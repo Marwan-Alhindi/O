@@ -3,7 +3,7 @@ import Hero from '/src/marketing/components/Hero'
 function Landing () {
     return (
         <div>
-            <Hero />            
+            <Hero />
         </div>
     )
 }
