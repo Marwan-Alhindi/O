@@ -1,8 +1,10 @@
 import { Outlet } from 'react-router-dom'
+import Navigation from './components/Navigation'
 
 function MarketingLayout() {
   return (
-    <div>
+    <div className="bg-black">
+      <Navigation />
       <Outlet /> {/* Renders child routes */}
     </div>
   )

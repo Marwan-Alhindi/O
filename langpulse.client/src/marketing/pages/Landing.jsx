@@ -1,7 +1,9 @@
+import Hero from '/src/marketing/components/Hero'
+
 function Landing () {
     return (
         <div>
-            <h1>Hello World from Landing!</h1>
+            <Hero />            
         </div>
     )
 }
