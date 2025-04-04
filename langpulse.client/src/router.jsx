@@ -6,7 +6,9 @@ import { createBrowserRouter } from 'react-router-dom'
 import MarketingLayout from './marketing/MarketingLayout'
 import AppLayout from './app/AppLayout'
 
+
 // Marketing Pages
+import Login from './marketing/pages/Login'
 import Landing from './marketing/pages/Landing'
 
 // App Pages
@@ -17,17 +19,9 @@ const router = createBrowserRouter([
     element: <MarketingLayout />,
     children: [
       { path: '', element: <Landing /> },
-    //   { path: 'pricing', element: <Pricing /> }
+      { path: 'login', element: <Login /> }
     ]
-  },
-//   {
-//     path: '/app',
-//     element: <AppLayout />,
-//     children: [
-//       { path: 'dashboard', element: <Dashboard /> },
-//       { path: 'profile', element: <Profile /> }
-//     ]
-//   }
+  }
 ])
 
 export default router

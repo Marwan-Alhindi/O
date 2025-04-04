@@ -14,7 +14,7 @@ function MarketingLayout() {
         <Navigation isMobile={isMobile} setIsMobile={setIsMobile}/>
 
         {!isMobile && (
-          <div className="relative h-screen w-full overflow-y-auto bg-black">
+          <div className="relative min-h-screen w-full bg-black">
             {/* Margin wrapper for all vertical lines */}
             <div className="h-full relative sm:mx-20 md:mx-40">
               {/* Outer solid borders */}
