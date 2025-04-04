@@ -38,7 +38,8 @@ function Hero () {
             <div className="border-b border-b-neutral-800 border-solid text-white"></div>
 
             {/* third section */}
-            <div className="text-white text-2xl p-25 pb-23 flex flex-row justify-between">
+            {/* p-25 pb-23 */}
+            <div className="text-white text-2xl flex flex-row justify-between py-25 px-8 md:px-20">
                 <p>Connect</p>
                 <p>Build</p>
                 <p>Manage</p>
