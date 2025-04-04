@@ -31,21 +31,22 @@ function Hero () {
             {/* second section */}
             <div>
             </div>
-                <div className="relative bg-black border border-white border-solid px-10 py-40 my-10 mx-59 shadow-[0_0_50px_white]"></div>
+                <div className="relative bg-black border border-white border-solid shadow-[0_0_50px_white] my-4 mx-15 p-20 md:mx-20 p-45 p-30 lg:mx-55 lg:p-45 xl:mx-70"></div>
             <div>
 
             {/* line */}
             <div className="border-b border-b-neutral-800 border-solid text-white"></div>
 
             {/* third section */}
-            <div className="text-white text-2xl p-20 flex flex-row justify-between">
+            <div className="text-white text-2xl p-25 pb-23 flex flex-row justify-between">
                 <p>Connect</p>
                 <p>Build</p>
                 <p>Manage</p>
                 <p>Flourish</p>
             </div>
 
-
+            {/* line */}
+            <div className="border-b border-b-neutral-800 border-solid text-white"></div>
             </div>
         </div>
     )
