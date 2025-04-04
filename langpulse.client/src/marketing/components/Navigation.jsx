@@ -38,7 +38,7 @@ return (
                 </div>
 
                 <div className="flex flex-col justify-between mb-8 gap-y-8">
-                    <button className="py-4 px-8 border border-white border-solid rounded-full">Log In</button>
+                    <button onClick={() => { navigate('/login'); setIsMobile(false)} } className="py-4 px-8 border border-white border-solid rounded-full">Log In</button>
                     <button className="bg-white py-4 px-8 border border-white border-solid rounded-full text-black">Get Started</button>
                 </div>
                 </div>
