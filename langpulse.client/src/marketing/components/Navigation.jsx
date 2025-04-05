@@ -25,7 +25,7 @@ return (
 
                 <div className="hidden md:flex flex-row text-white gap-x-10 mr-20">
                     <button onClick={() => navigate('/login') }>Log in</button>
-                    <button className="md:bg-white text-black p-2 rounded-full">Get Started</button>
+                    <button onClick={() => navigate('/getstarted')} className="md:bg-white text-black p-2 rounded-full">Get Started</button>
                 </div>
             </div>
 
@@ -39,7 +39,7 @@ return (
 
                 <div className="flex flex-col justify-between mb-8 gap-y-8">
                     <button onClick={() => { navigate('/login'); setIsMobile(false)} } className="py-4 px-8 border border-white border-solid rounded-full">Log In</button>
-                    <button className="bg-white py-4 px-8 border border-white border-solid rounded-full text-black">Get Started</button>
+                    <button onClick= {() => { navigate('/getstarted'); setIsMobile(false) } } className="bg-white py-4 px-8 border border-white border-solid rounded-full text-black">Get Started</button>
                 </div>
                 </div>
             )}

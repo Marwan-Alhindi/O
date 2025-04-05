@@ -1,4 +1,6 @@
+import { useNavigate } from "react-router-dom"
 function Hero () {
+    const navigate = useNavigate()
     return (
         <div>
             {/* line + margin at the top of the landing page*/}
@@ -18,7 +20,7 @@ function Hero () {
                     </div>
                     
                     <div className="absolute w-full flex justify-center mt-6">
-                        <button className="bg-white py-2 px-6 border border-white border-solid rounded-full text-black">
+                        <button onClick={() => navigate('/getstarted')} className="bg-white py-2 px-6 border border-white border-solid rounded-full text-black">
                             Get Started!
                         </button>
                     </div>
