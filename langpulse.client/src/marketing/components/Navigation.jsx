@@ -5,7 +5,7 @@ function Navigation({ isMobile, setIsMobile }) {
 return (
         <div>
             
-            <div className="relative border-b border-b-neutral-800 border-solid md:flex justify-between items-center py-4 px-8 lg:px-20 w-full">                
+            <div className="relative border-b border-b-neutral-800 border-solid md:flex justify-between items-center py-4 px-8 lg:px-20 w-screen">                
                 <div className="flex flex-row justify-between lg:ml-8">
                     <div className="flex flex-row gap-x-4 items-center text-white md:ml-20">
                         <button onClick={() => navigate('/')}>

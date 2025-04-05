@@ -1,8 +1,13 @@
+import Navigation from "../marketing/components/Navigation"
 import Chat from "./components/Chat"
+import { useState } from "react"
+
 function AppLayout () {
     return (
-        <div className="bg-neutral-800">
-            <div className="flex flex-row">
+        <div className="bg-zinc-900 w-screen h-screen md:bg-neutral-800">
+
+            {/* Desktop and large screens */}
+            <div className="hidden md:flex flex-row">
                 {/* first */}
                 <div className="absolute flex flex-row items-center gap-x-4 text-white mt-8 ml-8">
                         <button onClick={() => navigate('/app')}>
@@ -48,8 +53,60 @@ function AppLayout () {
                 {/* margin */}
                 <div className="relative bg-neutral-700">
                 </div>
-                
                 <Chat />
+            </div>
+
+            {/* Mobile */}
+            <div className="bg-zinc-900 md:hideen">
+                {/* navigation */}
+                <div className="flex flex-row justify-between">
+                    {/* logo and name */}
+                    <div className="flex flex-row gap-x-4 items-center text-white m-4">
+                            <button onClick={() => navigate('/')}>
+                                <img src="/public/logo-white.png" height={40} width={40}></img>
+                            </button>
+                            <button onClick={() => navigate('/')}>LangPulse</button>
+                    </div>
+
+                    <button className="md:hidden" onClick={() => setIsMobile(!isMobile)}>
+                        <img src="/public/hamburger.png"></img>
+                    </button>
+                </div>
+
+                {/* solid line */}
+                <div className="border border-white ml-8 mr-8"></div>
+
+                {/* name of the chat */}
+                <div className="absolute flex flex-row text-white justify-center w-full mt-4">
+                    <p className="text-2xl">Name of the Chat</p>
+                    <img src="public/nameOfChatArrow.png" height={10} width={10}></img>
+                </div>
+
+                {/* what do you want to work on? */}
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <p className="text-white text-lg">What do you want to work on?</p>
+                </div>
+
+                {/* solid line */}
+                <div className="absolute flex flex-row bottom-0 md:hidden">
+                    <div className="bg-white px-20 py-4 mb-8 ml-8 border border-neutral-800 border-solid rounded-full flex flex-row gap-x-4">
+                        <p>Meow!</p>
+                        <img src="public/nameOfChatArrow.png"></img>
+                    </div>
+
+                    <button>
+                        <img></img>
+                    </button>
+
+                    <button>
+                        <img></img>
+                    </button>
+
+                    <button>
+                        <img></img>
+                    </button>
+                </div>
+                
             </div>
         </div>
     )
