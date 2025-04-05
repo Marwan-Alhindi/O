@@ -57,7 +57,7 @@ function AppLayout () {
             </div>
 
             {/* Mobile */}
-            <div className="bg-zinc-900 md:hideen">
+            <div className="bg-zinc-900 md:hidden">
                 {/* navigation */}
                 <div className="flex flex-row justify-between">
                     {/* logo and name */}
