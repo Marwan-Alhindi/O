@@ -1,5 +1,5 @@
 import { useState } from "react"
-
+import Message from "./Message"
 function Chat () {
     const [messages, setMessages] = useState([])
     const [inputText, setInputText] = useState("")
@@ -25,7 +25,7 @@ function Chat () {
                 </div>
 
                 {/* messages section */}
-                <p>Test</p>
+                {messages.map((message, i) => (<Message key={i} text={message} />))}
                 
                 {/* Input field */}
                 <div className="absolute bottom-20 right-80 w-full max-w-xl border border-yellow-500 rounded-xl px-4 py-3 flex items-center gap-2">
