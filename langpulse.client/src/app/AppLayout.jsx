@@ -1,7 +1,6 @@
 import Navigation from "../marketing/components/Navigation"
 import Chat from "./components/Chat"
 import { useState } from "react"
-
 function AppLayout () {
     return (
         <div className="bg-zinc-900 w-screen h-screen md:bg-neutral-800">
@@ -83,29 +82,35 @@ function AppLayout () {
                 </div>
 
                 {/* what do you want to work on? */}
-                <div class="absolute inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center">
                     <p className="text-white text-lg">What do you want to work on?</p>
-                </div>
+                </div>            
 
                 {/* solid line */}
-                <div className="absolute flex flex-row bottom-0 md:hidden">
-                    <div className="bg-white px-20 py-4 mb-8 ml-8 border border-neutral-800 border-solid rounded-full flex flex-row gap-x-4">
-                        <p>Meow!</p>
-                        <img src="public/nameOfChatArrow.png"></img>
+                {/* <div className="border border-red border-solid ml-8 mr-8"></div> */}
+
+                <div className="absolute bottom-0 w-full flex justify-center mb-8">
+                    <div className="flex flex-row gap-x-4 items-end">
+                        {/* Input box */}
+                        <div className="bg-neutral-800 px-6 py-4 border border-yellow-300 border-solid rounded-full flex items-center justify-between w-[300px] text-white">
+                        <p className="text-sm text-neutral-400">Ask anything...</p>
+                        <img src="public/send.png" height={20} width={20} className="ml-4" />
+                        </div>
+
+                        {/* Buttons */}
+                        <div className="flex flex-row gap-x-4">
+                        <button className="w-12 h-12 bg-neutral-800 rounded-full flex items-center justify-center">
+                            <img src="public/attachFile.png" height={20} width={20} />
+                        </button>
+                        <button className="w-12 h-12 bg-neutral-800 rounded-full flex items-center justify-center">
+                            <img src="public/mic.png" height={20} width={20} />
+                        </button>
+                        <button className="w-12 h-12 bg-neutral-800 rounded-full flex items-center justify-center">
+                            <img src="public/search.png" height={20} width={20} />
+                        </button>
+                        </div>
                     </div>
-
-                    <button>
-                        <img></img>
-                    </button>
-
-                    <button>
-                        <img></img>
-                    </button>
-
-                    <button>
-                        <img></img>
-                    </button>
-                </div>
+                    </div>
                 
             </div>
         </div>
