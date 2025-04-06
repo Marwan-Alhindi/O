@@ -25,8 +25,13 @@ function Chat () {
                 </div>
 
                 {/* messages section */}
-                {messages.map((message, i) => (<Message key={i} text={message} />))}
-                
+                <div className="max-h-[700px] overflow-y-auto flex flex-col gap-2 pr-2">
+                    {messages.map((message, i) => (
+                        <div key={i} className="">
+                        <Message text={message} />
+                        </div>
+                    ))}
+                </div>
                 {/* Input field */}
                 <div className="absolute bottom-20 right-80 w-full max-w-xl border border-yellow-500 rounded-xl px-4 py-3 flex items-center gap-2">
                     <input
