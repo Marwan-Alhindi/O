@@ -14,28 +14,28 @@ function AppLayout () {
                         </button>
                         <button onClick={() => navigate('/app')}><b>LANGPULSE</b></button>
                         <button>
-                            <img src="public/sidebarCollapse.png"></img>
+                            <img src="public/sidebarCollapse.png" width={20} height={20}></img>
                         </button>
                 </div>
 
                 <div className="flex flex-col h-screen w-60">
                     <div className="absolute flex flex-row items-center mt-40 ml-12 gap-x-2">
                         <button>
-                            <img src="folder.png"></img>
+                            <img src="folder.png" width={30} height={30}></img>
                         </button>
                         <p className="text-neutral-400">Projects</p>
                         <button>
-                            <img src="plus.png"></img>
+                            <img src="plus.png" width={12} height={12}></img>
                         </button>
                     </div>
 
                     <div className="absolute flex flex-row items-center mt-50 ml-12 gap-x-2">
                         <button>
-                            <img src="conversations.png"></img>
+                            <img src="conversations.png" height={30} width={30}></img>
                         </button>
                         <p className="text-neutral-400">Conversations</p>
                         <button>
-                            <img src="plus.png"></img>
+                            <img src="plus.png" width={12} height={12}></img>
                         </button>
                     </div>                    
 
@@ -45,7 +45,7 @@ function AppLayout () {
                                 <p className="text-white font-bold">H</p>
                             </div>
                             <p>Marwan</p>
-                            <button><img src="public/settings.png"></img></button>
+                            <button><img src="public/settings.png" width={20} height={20}></img></button>
                         </div>
                     </div>
                 </div>
@@ -68,7 +68,7 @@ function AppLayout () {
                     </div>
 
                     <button className="md:hidden" onClick={() => setIsMobile(!isMobile)}>
-                        <img src="/public/hamburger.png"></img>
+                        <img src="/public/hamburger.png" width={50} height={50}></img>
                     </button>
                 </div>
 
@@ -76,9 +76,9 @@ function AppLayout () {
                 <div className="border border-white ml-8 mr-8"></div>
 
                 {/* name of the chat */}
-                <div className="absolute flex flex-row text-white justify-center w-full mt-4">
-                    <p className="text-2xl">Name of the Chat</p>
-                    <img src="public/nameOfChatArrow.png" height={10} width={10}></img>
+                <div className="absolute flex flex-row text-white justify-center items-center w-full mt-4">
+                    <p className="text-2xl mr-4">Name of the Chat</p>
+                    <img src="public/nameOfChatArrow.png" height={20} width={20}></img>
                 </div>
 
                 {/* what do you want to work on? */}
@@ -94,7 +94,7 @@ function AppLayout () {
                         {/* Input box */}
                         <div className="bg-neutral-800 px-6 py-4 border border-yellow-300 border-solid rounded-full flex items-center justify-between w-[300px] text-white">
                         <p className="text-sm text-neutral-400">Ask anything...</p>
-                        <img src="public/send.png" height={20} width={20} className="ml-4" />
+                        <img src="public/sendMessage.png" height={20} width={20} className="ml-4" />
                         </div>
 
                         {/* Buttons */}
@@ -106,7 +106,7 @@ function AppLayout () {
                             <img src="public/mic.png" height={20} width={20} />
                         </button>
                         <button className="w-12 h-12 bg-neutral-800 rounded-full flex items-center justify-center">
-                            <img src="public/search.png" height={20} width={20} />
+                            <img src="public/searchBar.png" height={20} width={20} />
                         </button>
                         </div>
                     </div>

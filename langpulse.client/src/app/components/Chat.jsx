@@ -19,9 +19,9 @@ function Chat () {
                 {/* Top actions */}
                 <div className="flex flex-row justify-end items-center gap-x-2">
                     <button><img src='public/LLMinvite.png' /></button>
-                    <button><img src='public/userInvite.png' /></button>
-                    <button><img src='public/searchBar.png' /></button>
-                    <button><img src='public/info.png' /></button>
+                    <button><img src='public/userInvite.png' width={30} height={30}/></button>
+                    <button><img src='public/searchBar.png' width={30} height={30}/></button>
+                    <button><img src='public/info.png' width={30} height={30}/></button>
                 </div>
 
                 {/* messages section */}
@@ -53,9 +53,9 @@ function Chat () {
             <>
                 <div className="flex flex-row justify-end items-center gap-x-2">
                 <button><img src='public/LLMinvite.png' /></button>
-                <button><img src='public/userInvite.png' /></button>
-                <button><img src='public/searchBar.png' /></button>
-                <button><img src='public/info.png' /></button>
+                <button><img src='public/userInvite.png' width={30} height={30}/></button>
+                <button><img src='public/searchBar.png' width={30} height={30}/></button>
+                <button><img src='public/info.png' width={30} height={30} /></button>
                 </div>
 
                 <div className="flex flex-col h-full w-full items-center justify-center">
