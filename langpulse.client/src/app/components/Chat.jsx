@@ -5,7 +5,6 @@ function Chat () {
     const [inputText, setInputText] = useState("")
     const [answerMessages, setAnswerMessages] = useState([])
     
-    console.log(inputText)
     function handleInputMessages () {
         if (!inputText.trim()) return
 
@@ -13,6 +12,19 @@ function Chat () {
         setInputText("") // clear input
         console.log(userMessages)
     }
+
+    function handleAIResponse (inputText) {
+        fetch(`http://localhost:8000/openai?user_input=${inputText}`)
+        .then(res => res.json())
+        .then(data => {
+            answerMessages.push(data)
+            console.log(answerMessages)
+        })
+        .catch(err => {
+            console.error("Fetch error:", err);
+        });
+    }
+    
     return (
         <div className="flex-grow m-4 ml-0 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white">
             {userMessages.length > 0 ? (
@@ -45,7 +57,7 @@ function Chat () {
                     <button className="text-yellow-400 hover:text-yellow-300">
                     <img src="public/attachFile.png" height={30} width={30} />
                     </button>
-                    <button className="text-yellow-400 hover:text-yellow-300" onClick={handleInputMessages}>
+                    <button className="text-yellow-400 hover:text-yellow-300" onClick={() => {handleInputMessages(); handleAIResponse(inputText);} }>
                     <img src="public/sendMessage.png" height={30} width={30} />
                     </button>
                 </div>
@@ -73,7 +85,7 @@ function Chat () {
                     <button className="text-yellow-400 hover:text-yellow-300">
                     <img src="public/attachFile.png" height={30} width={30} />
                     </button>
-                    <button className="text-yellow-400 hover:text-yellow-300" onClick={handleInputMessages}>
+                    <button className="text-yellow-400 hover:text-yellow-300" onClick={() => {handleInputMessages(); handleAIResponse(inputText);}}>
                     <img src="public/sendMessage.png" height={30} width={30} />
                     </button>
                 </div>

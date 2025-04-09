@@ -1,6 +1,11 @@
 # backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # Load variables from .env
 
 app = FastAPI()
 
@@ -16,3 +21,17 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Langpulse backend"}
+
+@app.get("/openai")
+def get_openai(user_input: str):
+    client = OpenAI(
+        # This is the default and can be omitted
+        api_key=os.getenv("OPENAI_API_KEY")
+    )
+
+    response = client.responses.create(
+        model="gpt-4o",
+        instructions="You are an assistant that talks like a pirate.",
+        input=user_input
+    )
+    return {response.output_text}
