@@ -2,7 +2,8 @@ import { useState } from "react"
 
 function Message ({text}) {
     const [msgLen, setMsgLen] = useState()
-    const [more, setIsMore] = useState(true)    
+    const [more, setIsMore] = useState(true)
+    
     function determineBtnRender () {
         
         return Boolean

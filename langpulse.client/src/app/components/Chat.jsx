@@ -1,20 +1,21 @@
 import { useState } from "react"
 import Message from "./Message"
 function Chat () {
-    const [messages, setMessages] = useState([])
+    const [userMessages, setUserMessages] = useState([])
     const [inputText, setInputText] = useState("")
-
+    const [answerMessages, setAnswerMessages] = useState([])
+    
     console.log(inputText)
     function handleInputMessages () {
         if (!inputText.trim()) return
 
-        setMessages(prev => [...prev, inputText])
+        setUserMessages(prev => [...prev, inputText])
         setInputText("") // clear input
-        console.log(messages)
+        console.log(userMessages)
     }
     return (
         <div className="flex-grow m-4 ml-0 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white">
-            {messages.length > 0 ? (
+            {userMessages.length > 0 ? (
             <div>
                 {/* Top actions */}
                 <div className="flex flex-row justify-end items-center gap-x-2">
@@ -26,7 +27,7 @@ function Chat () {
 
                 {/* messages section */}
                 <div className="max-h-[700px] overflow-y-auto flex flex-col gap-2 pr-2">
-                    {messages.map((message, i) => (
+                    {userMessages.map((message, i) => (
                         <div key={i} className="">
                         <Message text={message} />
                         </div>
