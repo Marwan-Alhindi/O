@@ -3,8 +3,8 @@
 
 # The current structure of the app
 - src/
-- │
-- ├── app/               # Authenticated app UI (after login)
+-   │
+- app/               # Authenticated app UI (after login)
 - │   ├── components/    # App-specific components
 - │   ├── pages/         # App screens (dashboard, profile, etc.)
 - │   ├── services/      # API calls

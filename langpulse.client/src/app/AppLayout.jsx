@@ -1,7 +1,15 @@
 import Navigation from "../marketing/components/Navigation"
 import Chat from "./components/Chat"
 import { useState } from "react"
+import { useEffect } from "react"
+
 function AppLayout () {
+
+    useEffect(() => {
+        fetch("http://localhost:8000/")
+          .then(res => res.json())
+          .then(data => console.log(data));
+      }, []);
     return (
         <div className="bg-zinc-900 w-screen h-screen md:bg-neutral-800">
 
