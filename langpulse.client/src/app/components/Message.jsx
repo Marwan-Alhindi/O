@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 
 function Message ({text}) {
-    const [msgLen, setMsgLen] = useState()
+
     const [more, setIsMore] = useState(false)
 
     useEffect(()=> {

@@ -28,7 +28,7 @@ function Chat () {
     }
     
     return (
-        <div className="flex-grow m-4 ml-0 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white">
+        <div className="flex-grow m-4 ml-0 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white ">
             {userMessages.length > 0 ? (
                 <div>
                     {/* Top actions */}
@@ -39,7 +39,7 @@ function Chat () {
                         <button><img src='public/info.png' width={30} height={30}/></button>
                     </div>
 
-                    <div className="max-h-[700px] overflow-y-auto flex flex-col gap-2 pr-2 text-white">
+                    <div className="max-h-[700px] overflow-y-auto flex flex-col gap-2 pr-2 text-white overflow-x-hidden">
                         {userMessages.map((message, i) => {
                             const AImessage = answerMessages[i];
                             return (

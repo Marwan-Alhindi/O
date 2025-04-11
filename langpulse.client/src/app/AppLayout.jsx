@@ -20,7 +20,7 @@ function AppLayout () {
                         </button>
                 </div>
 
-                <div className="flex flex-col h-screen w-60">
+                <div className="flex flex-col h-screen w-60 min-w-60 max-w-60 shrink-0 grow-0">
                     <div className="absolute flex flex-row items-center mt-40 ml-12 gap-x-2">
                         <button>
                             <img src="folder.png" width={30} height={30}></img>
