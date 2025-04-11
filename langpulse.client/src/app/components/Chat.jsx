@@ -2,11 +2,13 @@ import { useEffect, useState } from "react"
 import Message from "./Message"
 import AIMessage from "./AIMessage"
 import React from "react"
+import InviteLLM from "./InviteLLM"
 
 function Chat () {
     const [userMessages, setUserMessages] = useState([])
     const [inputText, setInputText] = useState("")
     const [answerMessages, setAnswerMessages] = useState([])
+    const [InviteLLMpop, setInviteLLMpop] = useState(false)
     
     function handleInputMessages () {
         if (!inputText.trim()) return
@@ -29,11 +31,16 @@ function Chat () {
     
     return (
         <div className="flex-grow m-4 ml-0 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white ">
-            {userMessages.length > 0 ? (
+            {InviteLLMpop ? (
+                  <InviteLLM
+                  status={InviteLLMpop}
+                  onClose={() => setInviteLLMpop(false)}
+                />
+            ) : userMessages.length > 0 ? (
                 <div>
                     {/* Top actions */}
                     <div className="flex flex-row justify-end items-center gap-x-2">
-                        <button><img src='public/LLMinvite.png' /></button>
+                        <button onClick={() => setInviteLLMpop(!InviteLLMpop) }><img src='public/LLMinvite.png' /></button>
                         <button><img src='public/userInvite.png' width={30} height={30}/></button>
                         <button><img src='public/searchBar.png' width={30} height={30}/></button>
                         <button><img src='public/info.png' width={30} height={30}/></button>
@@ -77,7 +84,7 @@ function Chat () {
                 ) : (
                 <>
                     <div className="flex flex-row justify-end items-center gap-x-2">
-                    <button><img src='public/LLMinvite.png' /></button>
+                    <button onClick={() => setInviteLLMpop(!InviteLLMpop) }><img src='public/LLMinvite.png' /></button>
                     <button><img src='public/userInvite.png' width={30} height={30}/></button>
                     <button><img src='public/searchBar.png' width={30} height={30}/></button>
                     <button><img src='public/info.png' width={30} height={30} /></button>
