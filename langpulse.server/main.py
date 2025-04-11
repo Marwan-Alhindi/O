@@ -31,7 +31,7 @@ def get_openai(user_input: str):
 
     response = client.responses.create(
         model="gpt-4o",
-        instructions="You are an assistant that talks like a pirate.",
+        instructions="I would like you to talk like a japanese girl and put the english as well",
         input=user_input
     )
     return {response.output_text}
