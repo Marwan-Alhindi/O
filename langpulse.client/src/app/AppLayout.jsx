@@ -4,23 +4,25 @@ import { useState } from "react"
 import { useEffect } from "react"
 
 function AppLayout () {
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
     return (
         <div className="bg-zinc-900 w-screen h-screen md:bg-neutral-800">
 
             {/* Desktop and large screens */}
             <div className="hidden md:flex flex-row">
                 {/* first */}
-                <div className="absolute flex flex-row items-center gap-x-4 text-white mt-8 ml-8">
+                <div className={`absolute flex flex-row items-center gap-x-4 text-white mt-8 ml-8 ${sidebarCollapsed ? 'hidden' : ''}`}>
                         <button onClick={() => navigate('/app')}>
                             <img src="/public/logo-white.png" height={40} width={40}></img>
                         </button>
                         <button onClick={() => navigate('/app')}><b>LANGPULSE</b></button>
-                        <button>
+                        <button onClick={() => setSidebarCollapsed(true)}>
                             <img src="public/sidebarCollapse.png" width={20} height={20}></img>
                         </button>
                 </div>
 
-                <div className="flex flex-col h-screen w-60 min-w-60 max-w-60 shrink-0 grow-0">
+                <div className={`flex flex-col h-screen shrink-0 grow-0 transition-all duration-300 ${sidebarCollapsed ? 'w-0 min-w-0 max-w-0 overflow-hidden' : 'w-60 min-w-60 max-w-60'}`}>
                     <div className="absolute flex flex-row items-center mt-40 ml-12 gap-x-2">
                         <button>
                             <img src="folder.png" width={30} height={30}></img>
@@ -39,10 +41,10 @@ function AppLayout () {
                         <button>
                             <img src="plus.png" width={12} height={12}></img>
                         </button>
-                    </div>                    
+                    </div>
 
                     <div className="mt-auto border-t border-b border-neutral-700 py-3 mb-20">
-                        <div className="ml-8 flex flex-row items-center gap-x-2 bg-neutral-800 rounded-full text-white">                            
+                        <div className="ml-8 flex flex-row items-center gap-x-2 bg-neutral-800 rounded-full text-white">
                             <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center">
                                 <p className="text-white font-bold">H</p>
                             </div>
@@ -54,7 +56,18 @@ function AppLayout () {
                 {/* margin */}
                 <div className="relative bg-neutral-700">
                 </div>
-                <Chat />
+
+                {/* Expand button when sidebar is collapsed */}
+                {sidebarCollapsed && (
+                    <button
+                        className="absolute top-8 left-8 z-10 text-white"
+                        onClick={() => setSidebarCollapsed(false)}
+                    >
+                        <img src="public/sidebarCollapse.png" width={20} height={20} className="rotate-180" />
+                    </button>
+                )}
+
+                <Chat sidebarCollapsed={sidebarCollapsed} />
             </div>
 
             {/* Mobile */}
@@ -86,7 +99,7 @@ function AppLayout () {
                 {/* what do you want to work on? */}
                 <div className="absolute inset-0 flex items-center justify-center">
                     <p className="text-white text-lg">What do you want to work on?</p>
-                </div>            
+                </div>
 
                 {/* solid line */}
                 {/* <div className="border border-red border-solid ml-8 mr-8"></div> */}
@@ -113,7 +126,7 @@ function AppLayout () {
                         </div>
                     </div>
                     </div>
-                
+
             </div>
         </div>
     )
