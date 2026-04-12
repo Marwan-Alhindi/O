@@ -3,7 +3,6 @@ function LLMContext({ llm, messages, invitedLLMs, onClose }) {
         if (msg.type === 'join' && msg.modelName === llm.name) return true
         if (msg.type === 'ai' && msg.modelName === llm.name) return true
         if (msg.type === 'user') {
-            // Show user messages that were directed at this LLM (via @mention or no mention)
             const mentionRegex = /@(\S+)/g
             const mentions = []
             let match
@@ -15,6 +14,34 @@ function LLMContext({ llm, messages, invitedLLMs, onClose }) {
         }
         return false
     })
+
+    // Estimate tokens (~4 chars per token)
+    function estimateTokens(text) {
+        return Math.ceil((text || '').length / 4)
+    }
+
+    // Calculate context usage breakdown
+    const systemPromptTokens = estimateTokens(llm.instructions)
+
+    const contributorMap = {}
+    relevantMessages.forEach(msg => {
+        const key = msg.type === 'user' ? 'user' : `${msg.modelName} #${msg.modelNumber}`
+        if (!contributorMap[key]) {
+            contributorMap[key] = { tokens: 0, type: msg.type === 'user' ? 'user' : 'llm' }
+        }
+        contributorMap[key].tokens += estimateTokens(msg.text)
+    })
+
+    const totalTokens = systemPromptTokens + Object.values(contributorMap).reduce((sum, c) => sum + c.tokens, 0)
+
+    const contextBreakdown = [
+        { label: 'System prompt', tokens: systemPromptTokens, color: '#a78bfa' },
+        ...Object.entries(contributorMap).map(([name, data]) => ({
+            label: name === 'user' ? 'User' : name,
+            tokens: data.tokens,
+            color: data.type === 'user' ? '#facc15' : '#6ee7b7'
+        }))
+    ]
 
     return (
         <div className="absolute inset-0 bg-black/60 z-20 flex items-center justify-center rounded-2xl">
@@ -69,7 +96,7 @@ function LLMContext({ llm, messages, invitedLLMs, onClose }) {
                 </div>
 
                 {/* Messages */}
-                <div>
+                <div className="mb-5">
                     <p className="text-yellow-400 font-semibold mb-2">Messages ({relevantMessages.length})</p>
                     <div className="space-y-2 max-h-60 overflow-y-auto">
                         {relevantMessages.map((msg, i) => (
@@ -86,6 +113,44 @@ function LLMContext({ llm, messages, invitedLLMs, onClose }) {
                         {relevantMessages.length === 0 && (
                             <p className="text-neutral-500 text-sm">No messages yet</p>
                         )}
+                    </div>
+                </div>
+
+                {/* Context Usage */}
+                <div>
+                    <p className="text-yellow-400 font-semibold mb-2">Context Usage</p>
+                    <p className="text-neutral-400 text-sm mb-3">~{totalTokens.toLocaleString()} estimated tokens</p>
+
+                    {/* Usage bar */}
+                    {totalTokens > 0 && (
+                        <div className="flex h-3 rounded-full overflow-hidden mb-4">
+                            {contextBreakdown.map((item, i) => (
+                                <div
+                                    key={i}
+                                    style={{
+                                        width: `${(item.tokens / totalTokens) * 100}%`,
+                                        backgroundColor: item.color
+                                    }}
+                                    title={`${item.label}: ${item.tokens} tokens`}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Breakdown list */}
+                    <div className="space-y-2">
+                        {contextBreakdown.map((item, i) => {
+                            const pct = totalTokens > 0 ? ((item.tokens / totalTokens) * 100).toFixed(1) : 0
+                            return (
+                                <div key={i} className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                                        <span className="text-neutral-300">{item.label}</span>
+                                    </div>
+                                    <span className="text-neutral-400">~{item.tokens.toLocaleString()} tokens ({pct}%)</span>
+                                </div>
+                            )
+                        })}
                     </div>
                 </div>
             </div>
