@@ -1,7 +1,14 @@
 import { useState } from "react";
 
-function InviteLLM({ status, onClose}) {
-    const [selectedOption, setSelectedOption] = useState("");
+function InviteLLM({ onClose, onInvite }) {
+    const [name, setName] = useState("");
+    const [modelType, setModelType] = useState("openai");
+    const [instructions, setInstructions] = useState("");
+
+    function handleConfirm() {
+        if (!name.trim()) return
+        onInvite(name, modelType, instructions)
+    }
 
     return (
         <div className="flex items-center justify-center h-full w-full">
@@ -14,26 +21,35 @@ function InviteLLM({ status, onClose}) {
                 </div>
                 <div className="border border-white border-solid px-4 m-4"></div>
                     <p>Type the LLM name below:</p>
-                    <input type="text" placeholder="Type the model member name" className="w-full px-4 py-2 bg-neutral-800 rounded text-white my-4 border border-yellow-300 border-solid" />
+                    <input
+                        type="text"
+                        placeholder="Type the model member name"
+                        className="w-full px-4 py-2 bg-neutral-800 rounded text-white my-4 border border-yellow-300 border-solid"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                    />
                     <p>Model:</p>
                     <select
-                        value={selectedOption}
-                        onChange={(e) => setSelectedOption(e.target.value)}
+                        value={modelType}
+                        onChange={(e) => setModelType(e.target.value)}
                         className="w-full px-4 py-2 bg-zinc-800 text-white rounded border border-zinc-600 focus:outline-none focus:ring-2 focus:ring-yellow-400 my-4 border border-yellow-300 border-solid"
                     >
-                        <option value="">-- Select --</option>
-                        <option value="llm1">LLM Agent 1</option>
-                        <option value="llm2">LLM Agent 2</option>
-                        <option value="llm3">LLM Agent 3</option>
+                        <option value="openai">ChatGPT (GPT-4o)</option>
                     </select>
                     <p>Instructions:</p>
-                    <input type="text" placeholder="Type the model instructions " className="w-full px-4 py-2 bg-neutral-800 rounded text-white my-4 border border-yellow-300 border-solid" />
+                    <input
+                        type="text"
+                        placeholder="Type the model instructions"
+                        className="w-full px-4 py-2 bg-neutral-800 rounded text-white my-4 border border-yellow-300 border-solid"
+                        value={instructions}
+                        onChange={(e) => setInstructions(e.target.value)}
+                    />
 
                     <div className="flex flex-row justify-between">
                     <button className="bg-neutral-800 hover:bg-yellow-400 text-white px-4 py-2 rounded-xl mt-4 border border-yellow-300 border-solid" onClick={onClose}>
                         Cancel
                     </button>
-                    <button className="bg-neutral-800 hover:bg-yellow-400 text-white px-4 py-2 rounded-xl mt-4 border border-yellow-300 border-solid" onClick={onClose}>
+                    <button className="bg-neutral-800 hover:bg-yellow-400 text-white px-4 py-2 rounded-xl mt-4 border border-yellow-300 border-solid" onClick={handleConfirm}>
                         Confirm
                     </button>
                     </div>
@@ -42,6 +58,5 @@ function InviteLLM({ status, onClose}) {
         </div>
     );
 }
-
 
 export default InviteLLM

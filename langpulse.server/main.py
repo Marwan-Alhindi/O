@@ -5,7 +5,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 
-load_dotenv()  # Load variables from .env
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 app = FastAPI()
 
@@ -44,11 +44,10 @@ def init_model(model_id: int, model_name: str, model_type: str, model_instruct: 
         init_models[model_id] = {
             "model_name": model_name,
             "client": OpenAI(api_key=os.getenv("OPENAI_API_KEY")),
-            "model_type": model_type,
-            "model_instruct": model_instruct
+            "model_type": model_type, "model_instruct": model_instruct
         }
 
-    response = init_models[model_name]["client"].chat.completions.create(
+    response = init_models[model_id]["client"].chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "user", "content": f"Please type a message to indicate you have joined the chat with mentioning your name. Your name is: {model_name}"}
@@ -58,7 +57,7 @@ def init_model(model_id: int, model_name: str, model_type: str, model_instruct: 
     return {"response": response.choices[0].message.content}
 
 @app.get("/askLLM")
-def ask_LLM(user_input: str, model_id):
+def ask_LLM(user_input: str, model_id: int):
 
     response = init_models[model_id]["client"].chat.completions.create(
                 model="gpt-4o",
