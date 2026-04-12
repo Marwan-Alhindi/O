@@ -3,6 +3,7 @@ import Message from "./Message"
 import AIMessage from "./AIMessage"
 import React from "react"
 import InviteLLM from "./InviteLLM"
+import LLMContext from "./LLMContext"
 
 function Chat ({ sidebarCollapsed }) {
     const [messages, setMessages] = useState([])
@@ -12,16 +13,18 @@ function Chat ({ sidebarCollapsed }) {
     const [InviteLLMpop, setInviteLLMpop] = useState(false)
     const [showMentionDropdown, setShowMentionDropdown] = useState(false)
     const [mentionFilter, setMentionFilter] = useState("")
+    const [contextLLM, setContextLLM] = useState(null)
 
-    function handleInviteLLM(name, modelType, instructions) {
+    function handleInviteLLM(name, modelType, instructions, connections) {
         const modelId = nextModelId
         setNextModelId(prev => prev + 1)
         setInviteLLMpop(false)
 
-        fetch(`http://localhost:8000/inviteLLM?model_id=${modelId}&model_name=${encodeURIComponent(name)}&model_type=${modelType}&model_instruct=${encodeURIComponent(instructions)}`)
+        const connectionsParam = connections.join(',')
+        fetch(`http://localhost:8000/inviteLLM?model_id=${modelId}&model_name=${encodeURIComponent(name)}&model_type=${modelType}&model_instruct=${encodeURIComponent(instructions)}&connections=${connectionsParam}`)
             .then(res => res.json())
             .then(data => {
-                setInvitedLLMs(prev => [...prev, { id: modelId, name, type: modelType, instructions, number: modelId }])
+                setInvitedLLMs(prev => [...prev, { id: modelId, name, type: modelType, instructions, number: modelId, connections }])
                 setMessages(prev => [...prev, { type: 'join', text: data.response, modelName: name, modelNumber: modelId, modelType }])
             })
             .catch(err => console.error("Invite error:", err))
@@ -68,9 +71,14 @@ function Chat ({ sidebarCollapsed }) {
             mentions.push(match[1])
         }
 
-        const targetLLMs = mentions.length > 0
-            ? invitedLLMs.filter(llm => mentions.includes(llm.name))
-            : invitedLLMs
+        // If @mentioned, send only to the first mentioned LLM. Otherwise, send to LLMs connected to "user"
+        let targetLLMs
+        if (mentions.length > 0) {
+            const firstMentioned = invitedLLMs.find(llm => llm.name === mentions[0])
+            targetLLMs = firstMentioned ? [firstMentioned] : []
+        } else {
+            targetLLMs = invitedLLMs.filter(llm => llm.connections?.includes("user"))
+        }
 
         targetLLMs.forEach(llm => {
             fetch(`http://localhost:8000/askLLM?user_input=${encodeURIComponent(text)}&model_id=${llm.id}`)
@@ -80,6 +88,11 @@ function Chat ({ sidebarCollapsed }) {
                 })
                 .catch(err => console.error("Ask error:", err))
         })
+    }
+
+    function openContext(modelName) {
+        const llm = invitedLLMs.find(l => l.name === modelName)
+        if (llm) setContextLLM(llm)
     }
 
     const hasMessages = messages.length > 0
@@ -106,10 +119,21 @@ function Chat ({ sidebarCollapsed }) {
 
     return (
         <div className={`relative flex-grow m-4 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white ${sidebarCollapsed ? '' : 'ml-0'}`}>
+            {/* Context panel overlay */}
+            {contextLLM && (
+                <LLMContext
+                    llm={contextLLM}
+                    messages={messages}
+                    invitedLLMs={invitedLLMs}
+                    onClose={() => setContextLLM(null)}
+                />
+            )}
+
             {InviteLLMpop ? (
                   <InviteLLM
                   onClose={() => setInviteLLMpop(false)}
                   onInvite={handleInviteLLM}
+                  invitedLLMs={invitedLLMs}
                 />
             ) : hasMessages ? (
                 <div>
@@ -132,7 +156,11 @@ function Chat ({ sidebarCollapsed }) {
                             } else if (msg.type === 'join') {
                                 return (
                                     <div key={i} className="mt-4 flex items-start gap-3">
-                                        <img src="/chatgpt.png" width={40} height={40} className="rounded-full" />
+                                        <img
+                                            src="/chatgpt.png" width={40} height={40}
+                                            className="rounded-full cursor-pointer hover:ring-2 hover:ring-yellow-400"
+                                            onClick={() => openContext(msg.modelName)}
+                                        />
                                         <div>
                                             <p className="text-sm text-neutral-400">{msg.modelName} #{msg.modelNumber}</p>
                                             <p className="text-yellow-300 italic mt-1">{msg.text}</p>
@@ -143,7 +171,11 @@ function Chat ({ sidebarCollapsed }) {
                                 return (
                                     <div key={i} className="mt-4">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <img src="/chatgpt.png" width={40} height={40} className="rounded-full" />
+                                            <img
+                                                src="/chatgpt.png" width={40} height={40}
+                                                className="rounded-full cursor-pointer hover:ring-2 hover:ring-yellow-400"
+                                                onClick={() => openContext(msg.modelName)}
+                                            />
                                             <span className="text-sm text-neutral-400">{msg.modelName} #{msg.modelNumber}</span>
                                         </div>
                                         <div className="ml-12">
