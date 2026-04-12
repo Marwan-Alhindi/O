@@ -2,6 +2,9 @@
 import React from 'react'
 import { createBrowserRouter } from 'react-router-dom'
 
+// Root Layout
+import RootLayout from './RootLayout'
+
 // Layouts
 import MarketingLayout from './marketing/MarketingLayout'
 import AppLayout from './app/AppLayout'
@@ -14,21 +17,29 @@ import Getstarted from './marketing/pages/Getstarted'
 // App Pages
 import AppLanding from './app/pages/AppLanding'
 
+// Auth
+import ProtectedRoute from './components/ProtectedRoute'
+
 const router = createBrowserRouter([
   {
-    path: '/',
-    element: <MarketingLayout />,
+    element: <RootLayout />,
     children: [
-      { path: '', element: <Landing /> },
-      { path: 'login', element: <Login /> },
-      { path: 'getstarted', element: <Getstarted /> }
-    ]
-  },
-  {
-    path: '/app',
-    element: <AppLayout/>,
-    children: [
-      {path: '', element: <AppLanding/>}
+      {
+        path: '/',
+        element: <MarketingLayout />,
+        children: [
+          { path: '', element: <Landing /> },
+          { path: 'login', element: <Login /> },
+          { path: 'getstarted', element: <Getstarted /> }
+        ]
+      },
+      {
+        path: '/app',
+        element: <ProtectedRoute><AppLayout /></ProtectedRoute>,
+        children: [
+          { path: '', element: <AppLanding /> }
+        ]
+      }
     ]
   }
 ])

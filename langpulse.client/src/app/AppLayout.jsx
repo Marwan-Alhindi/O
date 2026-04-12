@@ -1,10 +1,20 @@
-import Navigation from "../marketing/components/Navigation"
 import Chat from "./components/Chat"
 import { useState } from "react"
-import { useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { useAuth } from "../contexts/AuthContext"
 
 function AppLayout () {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const { user, logout } = useAuth()
+    const navigate = useNavigate()
+
+    const firstName = user?.user_metadata?.first_name || 'User'
+    const avatarLetter = firstName[0]?.toUpperCase() || 'U'
+
+    async function handleLogout() {
+        await logout()
+        navigate('/login')
+    }
 
     return (
         <div className="bg-zinc-900 w-screen h-screen md:bg-neutral-800">
@@ -46,10 +56,10 @@ function AppLayout () {
                     <div className="mt-auto border-t border-b border-neutral-700 py-3 mb-20">
                         <div className="ml-8 flex flex-row items-center gap-x-2 bg-neutral-800 rounded-full text-white">
                             <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center">
-                                <p className="text-white font-bold">H</p>
+                                <p className="text-white font-bold">{avatarLetter}</p>
                             </div>
-                            <p>Marwan</p>
-                            <button><img src="public/settings.png" width={20} height={20}></img></button>
+                            <p>{firstName}</p>
+                            <button onClick={handleLogout}><img src="public/settings.png" width={20} height={20}></img></button>
                         </div>
                     </div>
                 </div>
@@ -82,7 +92,7 @@ function AppLayout () {
                             <button onClick={() => navigate('/')}>LangPulse</button>
                     </div>
 
-                    <button className="md:hidden" onClick={() => setIsMobile(!isMobile)}>
+                    <button className="md:hidden">
                         <img src="/public/hamburger.png" width={50} height={50}></img>
                     </button>
                 </div>
@@ -100,9 +110,6 @@ function AppLayout () {
                 <div className="absolute inset-0 flex items-center justify-center">
                     <p className="text-white text-lg">What do you want to work on?</p>
                 </div>
-
-                {/* solid line */}
-                {/* <div className="border border-red border-solid ml-8 mr-8"></div> */}
 
                 <div className="absolute bottom-0 w-full flex justify-center mb-8">
                     <div className="flex flex-row gap-x-4 items-end">

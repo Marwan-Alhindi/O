@@ -4,6 +4,7 @@ import AIMessage from "./AIMessage"
 import React from "react"
 import InviteLLM from "./InviteLLM"
 import LLMContext from "./LLMContext"
+import { API_BASE } from "../../services/supabase"
 
 function Chat ({ sidebarCollapsed }) {
     const [messages, setMessages] = useState([])
@@ -21,7 +22,7 @@ function Chat ({ sidebarCollapsed }) {
         setInviteLLMpop(false)
 
         const connectionsParam = connections.join(',')
-        fetch(`http://localhost:8000/inviteLLM?model_id=${modelId}&model_name=${encodeURIComponent(name)}&model_type=${modelType}&model_instruct=${encodeURIComponent(instructions)}&connections=${connectionsParam}`)
+        fetch(`${API_BASE}/inviteLLM?model_id=${modelId}&model_name=${encodeURIComponent(name)}&model_type=${modelType}&model_instruct=${encodeURIComponent(instructions)}&connections=${connectionsParam}`)
             .then(res => res.json())
             .then(data => {
                 setInvitedLLMs(prev => [...prev, { id: modelId, name, type: modelType, instructions, number: modelId, connections }])
@@ -81,7 +82,7 @@ function Chat ({ sidebarCollapsed }) {
         }
 
         targetLLMs.forEach(llm => {
-            fetch(`http://localhost:8000/askLLM?user_input=${encodeURIComponent(text)}&model_id=${llm.id}`)
+            fetch(`${API_BASE}/askLLM?user_input=${encodeURIComponent(text)}&model_id=${llm.id}`)
                 .then(res => res.json())
                 .then(data => {
                     setMessages(prev => [...prev, { type: 'ai', text: data.response, modelName: llm.name, modelNumber: llm.number, modelType: llm.type }])
