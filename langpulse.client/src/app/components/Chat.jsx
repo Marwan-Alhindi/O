@@ -354,7 +354,7 @@ function Chat({ chatId, sidebarCollapsed }) {
                                 )
                             } else if (msg.sender_type === 'llm') {
                                 const llmInfo = msg.invited_llms
-                                const isJoinMessage = messages.findIndex(m => m.sender_type === 'llm' && m.sender_llm_id === msg.sender_llm_id) === messages.indexOf(msg)
+                                const isJoinMessage = msg.kind === 'join'
 
                                 return (
                                     <div key={msg.id} className="mt-4">

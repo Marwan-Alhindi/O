@@ -96,7 +96,8 @@ def invite_llm(body: InviteLLMRequest, authorization: str = Header()):
         "chat_id": body.chat_id,
         "sender_type": "llm",
         "sender_llm_id": body.llm_id,
-        "content": join_text
+        "content": join_text,
+        "kind": "join"
     }).execute()
 
     return {"response": join_text}
