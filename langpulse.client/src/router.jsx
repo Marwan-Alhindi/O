@@ -15,7 +15,7 @@ import Landing from './marketing/pages/Landing'
 import Getstarted from './marketing/pages/Getstarted'
 
 // App Pages
-import AppLanding from './app/pages/AppLanding'
+import ChatPage from './app/pages/ChatPage'
 
 // Auth
 import ProtectedRoute from './components/ProtectedRoute'
@@ -37,7 +37,8 @@ const router = createBrowserRouter([
         path: '/app',
         element: <ProtectedRoute><AppLayout /></ProtectedRoute>,
         children: [
-          { path: '', element: <AppLanding /> }
+          { path: '', element: null },
+          { path: 'chat/:chatId', element: <ChatPage /> }
         ]
       }
     ]

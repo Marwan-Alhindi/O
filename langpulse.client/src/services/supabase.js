@@ -5,4 +5,4 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
-export const API_BASE = "http://localhost:8000"
+export const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000"

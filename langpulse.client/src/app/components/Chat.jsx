@@ -1,34 +1,180 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import Message from "./Message"
 import AIMessage from "./AIMessage"
 import React from "react"
 import InviteLLM from "./InviteLLM"
 import LLMContext from "./LLMContext"
-import { API_BASE } from "../../services/supabase"
+import InviteUser from "./InviteUser"
+import { supabase, API_BASE } from "../../services/supabase"
+import { useAuth } from "../../contexts/AuthContext"
 
-function Chat ({ sidebarCollapsed }) {
+function Chat({ chatId, sidebarCollapsed }) {
     const [messages, setMessages] = useState([])
-    const [inputText, setInputText] = useState("")
     const [invitedLLMs, setInvitedLLMs] = useState([])
-    const [nextModelId, setNextModelId] = useState(1)
+    const [inputText, setInputText] = useState("")
     const [InviteLLMpop, setInviteLLMpop] = useState(false)
     const [showMentionDropdown, setShowMentionDropdown] = useState(false)
     const [mentionFilter, setMentionFilter] = useState("")
     const [contextLLM, setContextLLM] = useState(null)
+    const [showInviteUser, setShowInviteUser] = useState(false)
+    const [loading, setLoading] = useState(true)
+    const { user, session } = useAuth()
+    const messagesEndRef = useRef(null)
 
-    function handleInviteLLM(name, modelType, instructions, connections) {
-        const modelId = nextModelId
-        setNextModelId(prev => prev + 1)
+    // Load messages and LLMs from Supabase when chatId changes
+    useEffect(() => {
+        if (!chatId) return
+        setLoading(true)
+
+        async function loadData() {
+            // Fetch messages with joined LLM data
+            const { data: msgs } = await supabase
+                .from("messages")
+                .select("*, invited_llms(id, display_name, display_number, model_type)")
+                .eq("chat_id", chatId)
+                .order("created_at", { ascending: true })
+
+            if (msgs) setMessages(msgs)
+
+            // Fetch invited LLMs with connections
+            const { data: llms } = await supabase
+                .from("invited_llms")
+                .select("*, llm_connections(*)")
+                .eq("chat_id", chatId)
+                .order("created_at", { ascending: true })
+
+            if (llms) setInvitedLLMs(llms)
+
+            setLoading(false)
+        }
+
+        loadData()
+    }, [chatId])
+
+    // Subscribe to Supabase Realtime for live updates
+    useEffect(() => {
+        if (!chatId) return
+
+        const channel = supabase
+            .channel(`chat-${chatId}`)
+            .on('postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
+                async (payload) => {
+                    // Fetch the full message with joined LLM data
+                    const { data: fullMsg } = await supabase
+                        .from("messages")
+                        .select("*, invited_llms(id, display_name, display_number, model_type)")
+                        .eq("id", payload.new.id)
+                        .single()
+
+                    if (fullMsg) {
+                        setMessages(prev => {
+                            // Avoid duplicates
+                            if (prev.some(m => m.id === fullMsg.id)) return prev
+                            return [...prev, fullMsg]
+                        })
+                    }
+                }
+            )
+            .on('postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'invited_llms', filter: `chat_id=eq.${chatId}` },
+                async (payload) => {
+                    const { data: fullLlm } = await supabase
+                        .from("invited_llms")
+                        .select("*, llm_connections(*)")
+                        .eq("id", payload.new.id)
+                        .single()
+
+                    if (fullLlm) {
+                        setInvitedLLMs(prev => {
+                            if (prev.some(l => l.id === fullLlm.id)) return prev
+                            return [...prev, fullLlm]
+                        })
+                    }
+                }
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [chatId])
+
+    // Auto-scroll to bottom when new messages arrive
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }, [messages])
+
+    async function handleInviteLLM(name, modelType, instructions, connections) {
+        // Compute display_number
+        const maxNum = invitedLLMs.reduce((max, l) => Math.max(max, l.display_number || 0), 0)
+        const displayNumber = maxNum + 1
+
+        // Insert LLM into Supabase
+        const { data: newLlm, error: llmError } = await supabase
+            .from("invited_llms")
+            .insert({
+                chat_id: chatId,
+                display_name: name,
+                model_type: modelType,
+                model_instruct: instructions,
+                display_number: displayNumber,
+                invited_by: user.id
+            })
+            .select()
+            .single()
+
+        if (llmError) {
+            console.error("Error inviting LLM:", llmError)
+            alert("Failed to invite LLM: " + llmError.message)
+            return
+        }
+
+        // Insert connections
+        const connRows = connections.map(c => {
+            if (c === "user") {
+                return { llm_id: newLlm.id, target_type: "user", target_llm_id: null }
+            } else {
+                return { llm_id: newLlm.id, target_type: "llm", target_llm_id: c }
+            }
+        })
+
+        if (connRows.length > 0) {
+            const { error: connError } = await supabase.from("llm_connections").insert(connRows)
+            if (connError) {
+                console.error("Connection insert error:", connError)
+                alert("Failed to create connections: " + connError.message)
+            }
+        }
+
+        // Add LLM to state directly
+        const fullLlm = { ...newLlm, llm_connections: connRows.map((c, i) => ({ id: `temp-${i}`, ...c })) }
+        setInvitedLLMs(prev => {
+            if (prev.some(l => l.id === fullLlm.id)) return prev
+            return [...prev, fullLlm]
+        })
+
         setInviteLLMpop(false)
 
-        const connectionsParam = connections.join(',')
-        fetch(`${API_BASE}/inviteLLM?model_id=${modelId}&model_name=${encodeURIComponent(name)}&model_type=${modelType}&model_instruct=${encodeURIComponent(instructions)}&connections=${connectionsParam}`)
-            .then(res => res.json())
-            .then(data => {
-                setInvitedLLMs(prev => [...prev, { id: modelId, name, type: modelType, instructions, number: modelId, connections }])
-                setMessages(prev => [...prev, { type: 'join', text: data.response, modelName: name, modelNumber: modelId, modelType }])
+        // Call backend to generate join message
+        try {
+            const res = await fetch(`${API_BASE}/inviteLLM`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ chat_id: chatId, llm_id: newLlm.id })
             })
-            .catch(err => console.error("Invite error:", err))
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                console.error("Backend invite error:", err)
+                alert("Backend error: " + (err.detail || res.statusText))
+            }
+        } catch (err) {
+            console.error("Invite fetch error:", err)
+            alert("Could not reach backend server. Is it running on localhost:8000?")
+        }
     }
 
     function handleInputChange(e) {
@@ -51,20 +197,40 @@ function Chat ({ sidebarCollapsed }) {
 
     function handleSelectMention(llm) {
         const lastAtIndex = inputText.lastIndexOf('@')
-        const newText = inputText.slice(0, lastAtIndex) + `@${llm.name} `
+        const newText = inputText.slice(0, lastAtIndex) + `@${llm.display_name} `
         setInputText(newText)
         setShowMentionDropdown(false)
     }
 
-    function handleSendMessage() {
+    async function handleSendMessage() {
         if (!inputText.trim()) return
 
         const text = inputText
-        setMessages(prev => [...prev, { type: 'user', text }])
         setInputText("")
         setShowMentionDropdown(false)
 
-        // Parse @mentions to find which LLMs to send to
+        // Insert user message into Supabase (Realtime will broadcast)
+        const { data: newMsg, error: msgError } = await supabase.from("messages").insert({
+            chat_id: chatId,
+            sender_type: "user",
+            sender_user_id: user.id,
+            content: text
+        }).select("*, invited_llms(id, display_name, display_number, model_type)").single()
+
+        if (msgError) {
+            console.error("Message insert error:", msgError)
+            alert("Failed to send message: " + msgError.message)
+            setInputText(text)
+            return
+        }
+
+        // Add message to state immediately (don't wait for Realtime)
+        setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev
+            return [...prev, newMsg]
+        })
+
+        // Parse @mentions
         const mentionRegex = /@(\S+)/g
         const mentions = []
         let match
@@ -72,34 +238,49 @@ function Chat ({ sidebarCollapsed }) {
             mentions.push(match[1])
         }
 
-        // If @mentioned, send only to the first mentioned LLM. Otherwise, send to LLMs connected to "user"
+        // Find target LLMs
         let targetLLMs
         if (mentions.length > 0) {
-            const firstMentioned = invitedLLMs.find(llm => llm.name === mentions[0])
+            const firstMentioned = invitedLLMs.find(llm => llm.display_name === mentions[0])
             targetLLMs = firstMentioned ? [firstMentioned] : []
         } else {
-            targetLLMs = invitedLLMs.filter(llm => llm.connections?.includes("user"))
+            targetLLMs = invitedLLMs.filter(llm =>
+                llm.llm_connections?.some(c => c.target_type === "user")
+            )
         }
 
-        targetLLMs.forEach(llm => {
-            fetch(`${API_BASE}/askLLM?user_input=${encodeURIComponent(text)}&model_id=${llm.id}`)
-                .then(res => res.json())
-                .then(data => {
-                    setMessages(prev => [...prev, { type: 'ai', text: data.response, modelName: llm.name, modelNumber: llm.number, modelType: llm.type }])
+        // Call backend for each target LLM
+        for (const llm of targetLLMs) {
+            try {
+                const res = await fetch(`${API_BASE}/askLLM`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${session.access_token}`
+                    },
+                    body: JSON.stringify({ chat_id: chatId, llm_id: llm.id })
                 })
-                .catch(err => console.error("Ask error:", err))
-        })
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}))
+                    console.error("Backend ask error:", err)
+                    alert("LLM error: " + (err.detail || res.statusText))
+                }
+            } catch (err) {
+                console.error("Ask fetch error:", err)
+                alert("Could not reach backend server. Is it running on localhost:8000?")
+            }
+        }
     }
 
-    function openContext(modelName) {
-        const llm = invitedLLMs.find(l => l.name === modelName)
+    function openContext(llmId) {
+        const llm = invitedLLMs.find(l => l.id === llmId)
         if (llm) setContextLLM(llm)
     }
 
     const hasMessages = messages.length > 0
 
     const filteredLLMs = invitedLLMs.filter(llm =>
-        llm.name.toLowerCase().startsWith(mentionFilter.toLowerCase())
+        llm.display_name.toLowerCase().startsWith(mentionFilter.toLowerCase())
     )
 
     const mentionDropdown = showMentionDropdown && filteredLLMs.length > 0 && (
@@ -112,11 +293,19 @@ function Chat ({ sidebarCollapsed }) {
                     onClick={() => handleSelectMention(llm)}
                 >
                     <img src="/chatgpt.png" width={24} height={24} className="rounded-full" />
-                    <span>{llm.name} #{llm.number}</span>
+                    <span>{llm.display_name} #{llm.display_number}</span>
                 </button>
             ))}
         </div>
     )
+
+    if (loading) {
+        return (
+            <div className={`relative flex-grow m-4 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white flex items-center justify-center ${sidebarCollapsed ? '' : 'ml-0'}`}>
+                <p className="text-neutral-400">Loading chat...</p>
+            </div>
+        )
+    }
 
     return (
         <div className={`relative flex-grow m-4 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white ${sidebarCollapsed ? '' : 'ml-0'}`}>
@@ -130,115 +319,124 @@ function Chat ({ sidebarCollapsed }) {
                 />
             )}
 
+            {/* Invite User modal */}
+            {showInviteUser && (
+                <InviteUser
+                    chatId={chatId}
+                    onClose={() => setShowInviteUser(false)}
+                />
+            )}
+
             {InviteLLMpop ? (
-                  <InviteLLM
-                  onClose={() => setInviteLLMpop(false)}
-                  onInvite={handleInviteLLM}
-                  invitedLLMs={invitedLLMs}
+                <InviteLLM
+                    onClose={() => setInviteLLMpop(false)}
+                    onInvite={handleInviteLLM}
+                    invitedLLMs={invitedLLMs}
                 />
             ) : hasMessages ? (
                 <div>
                     {/* Top actions */}
                     <div className="flex flex-row justify-end items-center gap-x-2">
-                        <button onClick={() => setInviteLLMpop(true)}><img src='public/LLMinvite.png' /></button>
-                        <button><img src='public/userInvite.png' width={30} height={30}/></button>
-                        <button><img src='public/searchBar.png' width={30} height={30}/></button>
-                        <button><img src='public/info.png' width={30} height={30}/></button>
+                        <button onClick={() => setInviteLLMpop(true)}><img src='/LLMinvite.png' /></button>
+                        <button onClick={() => setShowInviteUser(true)}><img src='/userInvite.png' width={30} height={30} /></button>
+                        <button><img src='/searchBar.png' width={30} height={30} /></button>
+                        <button><img src='/info.png' width={30} height={30} /></button>
                     </div>
 
                     <div className="max-h-[700px] overflow-y-auto flex flex-col gap-2 pr-2 text-white overflow-x-hidden">
-                        {messages.map((msg, i) => {
-                            if (msg.type === 'user') {
+                        {messages.map((msg) => {
+                            if (msg.sender_type === 'user') {
+                                const isMe = msg.sender_user_id === user?.id
                                 return (
-                                    <div key={i} className="flex left-0 justify-end mr-6">
-                                        <Message text={msg.text} />
+                                    <div key={msg.id} className={`flex left-0 ${isMe ? 'justify-end mr-6' : 'justify-start ml-6'}`}>
+                                        <Message text={msg.content} senderName={isMe ? null : "User"} />
                                     </div>
                                 )
-                            } else if (msg.type === 'join') {
+                            } else if (msg.sender_type === 'llm') {
+                                const llmInfo = msg.invited_llms
+                                const isJoinMessage = messages.findIndex(m => m.sender_type === 'llm' && m.sender_llm_id === msg.sender_llm_id) === messages.indexOf(msg)
+
                                 return (
-                                    <div key={i} className="mt-4 flex items-start gap-3">
-                                        <img
-                                            src="/chatgpt.png" width={40} height={40}
-                                            className="rounded-full cursor-pointer hover:ring-2 hover:ring-yellow-400"
-                                            onClick={() => openContext(msg.modelName)}
-                                        />
-                                        <div>
-                                            <p className="text-sm text-neutral-400">{msg.modelName} #{msg.modelNumber}</p>
-                                            <p className="text-yellow-300 italic mt-1">{msg.text}</p>
-                                        </div>
-                                    </div>
-                                )
-                            } else if (msg.type === 'ai') {
-                                return (
-                                    <div key={i} className="mt-4">
+                                    <div key={msg.id} className="mt-4">
                                         <div className="flex items-center gap-2 mb-1">
                                             <img
                                                 src="/chatgpt.png" width={40} height={40}
                                                 className="rounded-full cursor-pointer hover:ring-2 hover:ring-yellow-400"
-                                                onClick={() => openContext(msg.modelName)}
+                                                onClick={() => openContext(msg.sender_llm_id)}
                                             />
-                                            <span className="text-sm text-neutral-400">{msg.modelName} #{msg.modelNumber}</span>
+                                            <span className="text-sm text-neutral-400">
+                                                {llmInfo?.display_name || 'LLM'} #{llmInfo?.display_number || '?'}
+                                            </span>
+                                            {isJoinMessage && <span className="text-xs text-yellow-400 italic">(joined)</span>}
                                         </div>
                                         <div className="ml-12">
-                                            <AIMessage text={msg.text} />
+                                            {isJoinMessage ? (
+                                                <p className="text-yellow-300 italic">{msg.content}</p>
+                                            ) : (
+                                                <AIMessage text={msg.content} />
+                                            )}
                                         </div>
                                     </div>
                                 )
                             }
+                            return null
                         })}
+                        <div ref={messagesEndRef} />
                     </div>
+
                     {/* Input field */}
                     <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl">
                         <div className="relative border border-yellow-500 rounded-xl px-4 py-3 flex items-center gap-2">
                             {mentionDropdown}
                             <input
-                            type="text"
-                            placeholder="Ask anything... (type @ to mention an LLM)"
-                            className="bg-transparent outline-none flex-grow text-white placeholder-neutral-400"
-                            value={inputText}
-                            onChange={handleInputChange}
+                                type="text"
+                                placeholder="Ask anything... (type @ to mention an LLM)"
+                                className="bg-transparent outline-none flex-grow text-white placeholder-neutral-400"
+                                value={inputText}
+                                onChange={handleInputChange}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                             />
                             <button className="text-yellow-400 hover:text-yellow-300">
-                            <img src="public/attachFile.png" height={30} width={30} />
+                                <img src="/attachFile.png" height={30} width={30} />
                             </button>
                             <button className="text-yellow-400 hover:text-yellow-300" onClick={handleSendMessage}>
-                            <img src="public/sendMessage.png" height={30} width={30} />
+                                <img src="/sendMessage.png" height={30} width={30} />
                             </button>
                         </div>
                     </div>
                 </div>
-                ) : (
+            ) : (
                 <>
                     <div className="flex flex-row justify-end items-center gap-x-2">
-                    <button onClick={() => setInviteLLMpop(true)}><img src='public/LLMinvite.png' /></button>
-                    <button><img src='public/userInvite.png' width={30} height={30}/></button>
-                    <button><img src='public/searchBar.png' width={30} height={30}/></button>
-                    <button><img src='public/info.png' width={30} height={30} /></button>
+                        <button onClick={() => setInviteLLMpop(true)}><img src='/LLMinvite.png' /></button>
+                        <button onClick={() => setShowInviteUser(true)}><img src='/userInvite.png' width={30} height={30} /></button>
+                        <button><img src='/searchBar.png' width={30} height={30} /></button>
+                        <button><img src='/info.png' width={30} height={30} /></button>
                     </div>
 
                     <div className="flex flex-col h-full w-full items-center justify-center">
-                    <p className="text-lg mb-6">What do you want to work on?</p>
+                        <p className="text-lg mb-6">What do you want to work on?</p>
 
-                    <div className="relative w-full max-w-xl border border-yellow-500 rounded-xl px-4 py-3 flex items-center gap-2">
-                        {mentionDropdown}
-                        <input
-                        type="text"
-                        placeholder="Ask anything... (type @ to mention an LLM)"
-                        className="bg-transparent outline-none flex-grow text-white placeholder-neutral-400"
-                        value={inputText}
-                        onChange={handleInputChange}
-                        />
-                        <button className="text-yellow-400 hover:text-yellow-300">
-                        <img src="public/attachFile.png" height={30} width={30} />
-                        </button>
-                        <button className="text-yellow-400 hover:text-yellow-300" onClick={handleSendMessage}>
-                        <img src="public/sendMessage.png" height={30} width={30} />
-                        </button>
-                    </div>
+                        <div className="relative w-full max-w-xl border border-yellow-500 rounded-xl px-4 py-3 flex items-center gap-2">
+                            {mentionDropdown}
+                            <input
+                                type="text"
+                                placeholder="Ask anything... (type @ to mention an LLM)"
+                                className="bg-transparent outline-none flex-grow text-white placeholder-neutral-400"
+                                value={inputText}
+                                onChange={handleInputChange}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                            />
+                            <button className="text-yellow-400 hover:text-yellow-300">
+                                <img src="/attachFile.png" height={30} width={30} />
+                            </button>
+                            <button className="text-yellow-400 hover:text-yellow-300" onClick={handleSendMessage}>
+                                <img src="/sendMessage.png" height={30} width={30} />
+                            </button>
+                        </div>
                     </div>
                 </>
-                )
-            }
+            )}
         </div>
     )
 }

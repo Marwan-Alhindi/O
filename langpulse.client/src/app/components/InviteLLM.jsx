@@ -62,7 +62,7 @@ function InviteLLM({ onClose, onInvite, invitedLLMs }) {
                                 className="accent-yellow-400 w-4 h-4"
                             />
                             <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center text-xs font-bold">U</div>
-                            <span>User (You)</span>
+                            <span>User (All humans)</span>
                         </label>
                         {invitedLLMs.map(llm => (
                             <label key={llm.id} className="flex items-center gap-3 px-3 py-2 bg-neutral-900 rounded-lg cursor-pointer hover:bg-neutral-700">
@@ -73,7 +73,7 @@ function InviteLLM({ onClose, onInvite, invitedLLMs }) {
                                     className="accent-yellow-400 w-4 h-4"
                                 />
                                 <img src="/chatgpt.png" width={24} height={24} className="rounded-full" />
-                                <span>{llm.name} #{llm.number}</span>
+                                <span>{llm.display_name} #{llm.display_number}</span>
                             </label>
                         ))}
                         {invitedLLMs.length === 0 && (
