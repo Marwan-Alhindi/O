@@ -173,7 +173,7 @@ function Chat({ chatId, sidebarCollapsed }) {
             }
         } catch (err) {
             console.error("Invite fetch error:", err)
-            alert("Could not reach backend server. Is it running on localhost:8000?")
+            alert(`Could not reach backend at ${API_BASE}: ${err.message}`)
         }
     }
 
@@ -267,7 +267,7 @@ function Chat({ chatId, sidebarCollapsed }) {
                 }
             } catch (err) {
                 console.error("Ask fetch error:", err)
-                alert("Could not reach backend server. Is it running on localhost:8000?")
+                alert(`Could not reach backend at ${API_BASE}: ${err.message}`)
             }
         }
     }
