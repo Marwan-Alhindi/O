@@ -91,6 +91,22 @@ function Chat({ chatId, sidebarCollapsed }) {
                             if (prev.some(m => m.id === fullMsg.id)) return prev
                             return [...prev, fullMsg]
                         })
+
+                        // Lazy-load the sender's profile if we haven't seen them yet
+                        if (fullMsg.sender_type === 'user' && fullMsg.sender_user_id) {
+                            setProfilesById(prev => {
+                                if (prev[fullMsg.sender_user_id]) return prev
+                                supabase
+                                    .from("profiles")
+                                    .select("id, first_name")
+                                    .eq("id", fullMsg.sender_user_id)
+                                    .single()
+                                    .then(({ data }) => {
+                                        if (data) setProfilesById(p => ({ ...p, [data.id]: data }))
+                                    })
+                                return prev
+                            })
+                        }
                     }
                 }
             )
