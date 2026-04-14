@@ -142,6 +142,36 @@ function AppLayout() {
         navigate('/login')
     }
 
+    async function handleLeaveChat(chat) {
+        if (!window.confirm(`Leave "${chat.name}"?`)) return
+
+        await supabase.from("messages").insert({
+            chat_id: chat.id,
+            sender_type: "user",
+            sender_user_id: user.id,
+            content: `${firstName} left the chat`,
+            kind: "leave"
+        })
+
+        const { error } = await supabase
+            .from("chat_participants")
+            .delete()
+            .eq("chat_id", chat.id)
+            .eq("user_id", user.id)
+
+        if (error) {
+            console.error("Leave chat error:", error)
+            alert("Failed to leave chat: " + error.message)
+            return
+        }
+
+        setChats(prev => prev.filter(c => c.id !== chat.id))
+
+        if (location.pathname === `/app/chat/${chat.id}`) {
+            navigate('/app')
+        }
+    }
+
     const isInChat = location.pathname.includes('/app/chat/')
 
     return (
@@ -206,13 +236,24 @@ function AppLayout() {
                             {chats.map(chat => {
                                 const isActive = location.pathname === `/app/chat/${chat.id}`
                                 return (
-                                    <button
+                                    <div
                                         key={chat.id}
-                                        onClick={() => navigate(`/app/chat/${chat.id}`)}
-                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm truncate transition-colors ${isActive ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-700/50 hover:text-white'}`}
+                                        className={`group flex items-center rounded-lg text-sm transition-colors ${isActive ? 'bg-neutral-700' : 'hover:bg-neutral-700/50'}`}
                                     >
-                                        {chat.name}
-                                    </button>
+                                        <button
+                                            onClick={() => navigate(`/app/chat/${chat.id}`)}
+                                            className={`flex-1 text-left px-3 py-2 truncate ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-white'}`}
+                                        >
+                                            {chat.name}
+                                        </button>
+                                        <button
+                                            onClick={() => handleLeaveChat(chat)}
+                                            className="opacity-0 group-hover:opacity-100 px-2 text-neutral-400 hover:text-red-400 transition-opacity"
+                                            title="Leave chat"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
                                 )
                             })}
                         </div>

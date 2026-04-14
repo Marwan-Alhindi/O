@@ -359,6 +359,13 @@ function Chat({ chatId, sidebarCollapsed }) {
 
                     <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pr-2 text-white overflow-x-hidden">
                         {messages.map((msg) => {
+                            if (msg.kind === 'leave') {
+                                return (
+                                    <div key={msg.id} className="mt-4 text-center">
+                                        <span className="text-xs text-neutral-500 italic">{msg.content}</span>
+                                    </div>
+                                )
+                            }
                             if (msg.sender_type === 'user') {
                                 const isMe = msg.sender_user_id === user?.id
                                 const profile = profilesById[msg.sender_user_id]
