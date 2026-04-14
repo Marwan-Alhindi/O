@@ -256,15 +256,11 @@ function Chat({ chatId, sidebarCollapsed }) {
             mentions.push(match[1])
         }
 
-        // Find target LLMs
-        let targetLLMs
+        // Only respond when explicitly @mentioned
+        let targetLLMs = []
         if (mentions.length > 0) {
             const firstMentioned = invitedLLMs.find(llm => llm.display_name === mentions[0])
-            targetLLMs = firstMentioned ? [firstMentioned] : []
-        } else {
-            targetLLMs = invitedLLMs.filter(llm =>
-                llm.llm_connections?.some(c => c.target_type === "user")
-            )
+            if (firstMentioned) targetLLMs = [firstMentioned]
         }
 
         // Call backend for each target LLM
