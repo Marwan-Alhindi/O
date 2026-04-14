@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -24,6 +25,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+PDFS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdfs")
+os.makedirs(PDFS_DIR, exist_ok=True)
+app.mount("/pdfs", StaticFiles(directory=PDFS_DIR), name="pdfs")
 
 # Supabase client (service role — bypasses RLS)
 supabase = create_client(

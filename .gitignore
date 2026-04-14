@@ -17,5 +17,8 @@ venv/
 # Stray root lockfile (no root package.json)
 /package-lock.json
 
+# Generated PDFs from the create_pdf tool
+langpulse.server/pdfs/*.pdf
+
 # OS
 .DS_Store

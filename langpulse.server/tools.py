@@ -8,7 +8,14 @@ This module does not import from main.py; dependencies are injected via ctx
 to avoid circular imports.
 """
 
+import os
+import re
+import uuid
+
 MAX_MENTION_DEPTH = 3
+
+PDFS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdfs")
+PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE", "http://localhost:8000").rstrip("/")
 
 
 TOOL_SCHEMAS = [
@@ -38,6 +45,21 @@ TOOL_SCHEMAS = [
                     "content": {"type": "string", "description": "The message to send them."},
                 },
                 "required": ["target_display_name", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_pdf",
+            "description": "Generate a real downloadable PDF from text/markdown content. Use this when the user asks you to create, export, or download a PDF. Returns a URL you MUST include in your reply as a markdown link so the user can download it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Title shown at the top of the PDF and used for the filename."},
+                    "content": {"type": "string", "description": "The body of the PDF. Plain text with blank lines between paragraphs; supports basic inline markdown (**bold**, *italic*)."},
+                },
+                "required": ["title", "content"],
             },
         },
     },
@@ -179,10 +201,47 @@ def run_invite_llm(ctx, display_name, instructions, connect_to_user=True):
     return f"Invited {display_name} (#{display_number}). They are in the chat and connected to you — you can now use mention_llm to talk to them."
 
 
+def run_create_pdf(ctx, title, content):
+    try:
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    except Exception as e:
+        return f"PDF generation unavailable (reportlab not installed): {e}"
+
+    os.makedirs(PDFS_DIR, exist_ok=True)
+
+    safe_title = re.sub(r"[^A-Za-z0-9_-]+", "-", title).strip("-") or "document"
+    filename = f"{safe_title}-{uuid.uuid4().hex[:8]}.pdf"
+    path = os.path.join(PDFS_DIR, filename)
+
+    styles = getSampleStyleSheet()
+    story = [Paragraph(title, styles["Title"]), Spacer(1, 12)]
+    for block in re.split(r"\n\s*\n", content.strip()):
+        if not block:
+            continue
+        # reportlab Paragraph treats <br/> as a line break; single \n -> <br/>.
+        html = block.replace("\n", "<br/>")
+        # Convert **bold** and *italic* so the LLM's markdown survives.
+        html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html)
+        html = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", html)
+        story.append(Paragraph(html, styles["BodyText"]))
+        story.append(Spacer(1, 8))
+
+    try:
+        SimpleDocTemplate(path, pagesize=LETTER).build(story)
+    except Exception as e:
+        return f"PDF generation failed: {e}"
+
+    url = f"{PUBLIC_API_BASE}/pdfs/{filename}"
+    return f"PDF created at {url}. Include this URL in your reply as a markdown link like [Download {title}]({url}) so the user can download it."
+
+
 TOOL_DISPATCH = {
     "web_search": run_web_search,
     "mention_llm": run_mention_llm,
     "invite_llm": run_invite_llm,
+    "create_pdf": run_create_pdf,
 }
 
 
