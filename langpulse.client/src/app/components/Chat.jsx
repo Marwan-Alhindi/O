@@ -39,7 +39,7 @@ function Chat({ chatId, sidebarCollapsed }) {
             // Fetch invited LLMs with connections
             const { data: llms } = await supabase
                 .from("invited_llms")
-                .select("*, llm_connections(*)")
+                .select("*, llm_connections!llm_id(*)")
                 .eq("chat_id", chatId)
                 .order("created_at", { ascending: true })
 
@@ -81,7 +81,7 @@ function Chat({ chatId, sidebarCollapsed }) {
                 async (payload) => {
                     const { data: fullLlm } = await supabase
                         .from("invited_llms")
-                        .select("*, llm_connections(*)")
+                        .select("*, llm_connections!llm_id(*)")
                         .eq("id", payload.new.id)
                         .single()
 
