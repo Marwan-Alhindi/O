@@ -17,6 +17,7 @@ function Chat({ chatId, sidebarCollapsed }) {
     const [mentionFilter, setMentionFilter] = useState("")
     const [contextLLM, setContextLLM] = useState(null)
     const [showInviteUser, setShowInviteUser] = useState(false)
+    const [profilesById, setProfilesById] = useState({})
     const [loading, setLoading] = useState(true)
     const { user, session } = useAuth()
     const messagesEndRef = useRef(null)
@@ -44,6 +45,23 @@ function Chat({ chatId, sidebarCollapsed }) {
                 .order("created_at", { ascending: true })
 
             if (llms) setInvitedLLMs(llms)
+
+            // Fetch profiles for all chat participants
+            const { data: participants } = await supabase
+                .from("chat_participants")
+                .select("user_id")
+                .eq("chat_id", chatId)
+
+            if (participants?.length) {
+                const { data: profiles } = await supabase
+                    .from("profiles")
+                    .select("id, first_name")
+                    .in("id", participants.map(p => p.user_id))
+
+                if (profiles) {
+                    setProfilesById(Object.fromEntries(profiles.map(p => [p.id, p])))
+                }
+            }
 
             setLoading(false)
         }
@@ -347,9 +365,18 @@ function Chat({ chatId, sidebarCollapsed }) {
                         {messages.map((msg) => {
                             if (msg.sender_type === 'user') {
                                 const isMe = msg.sender_user_id === user?.id
+                                const profile = profilesById[msg.sender_user_id]
+                                const displayName = isMe ? 'You' : (profile?.first_name || 'User')
+                                const avatarLetter = (displayName[0] || 'U').toUpperCase()
                                 return (
-                                    <div key={msg.id} className={`flex left-0 ${isMe ? 'justify-end mr-6' : 'justify-start ml-6'}`}>
-                                        <Message text={msg.content} senderName={isMe ? null : "User"} />
+                                    <div key={msg.id} className={`flex mt-4 ${isMe ? 'flex-row-reverse' : 'flex-row'} items-start gap-2`}>
+                                        <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center shrink-0">
+                                            <span className="text-black font-bold">{avatarLetter}</span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className={`text-sm text-neutral-400 mb-1 ${isMe ? 'text-right' : 'text-left'}`}>{displayName}</span>
+                                            <Message text={msg.content} />
+                                        </div>
                                     </div>
                                 )
                             } else if (msg.sender_type === 'llm') {
