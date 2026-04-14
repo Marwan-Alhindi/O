@@ -308,7 +308,7 @@ function Chat({ chatId, sidebarCollapsed }) {
     }
 
     return (
-        <div className={`relative flex-grow m-4 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white ${sidebarCollapsed ? '' : 'ml-0'}`}>
+        <div className={`relative flex-grow m-4 p-6 bg-zinc-900 rounded-2xl border border-neutral-700 shadow-inner text-white flex flex-col min-h-0 ${sidebarCollapsed ? '' : 'ml-0'}`}>
             {/* Context panel overlay */}
             {contextLLM && (
                 <LLMContext
@@ -334,7 +334,7 @@ function Chat({ chatId, sidebarCollapsed }) {
                     invitedLLMs={invitedLLMs}
                 />
             ) : hasMessages ? (
-                <div>
+                <div className="flex flex-col flex-1 min-h-0">
                     {/* Top actions */}
                     <div className="flex flex-row justify-end items-center gap-x-2">
                         <button onClick={() => setInviteLLMpop(true)}><img src='/LLMinvite.png' /></button>
@@ -343,7 +343,7 @@ function Chat({ chatId, sidebarCollapsed }) {
                         <button><img src='/info.png' width={30} height={30} /></button>
                     </div>
 
-                    <div className="max-h-[700px] overflow-y-auto flex flex-col gap-2 pr-2 text-white overflow-x-hidden">
+                    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pr-2 text-white overflow-x-hidden">
                         {messages.map((msg) => {
                             if (msg.sender_type === 'user') {
                                 const isMe = msg.sender_user_id === user?.id
@@ -385,7 +385,7 @@ function Chat({ chatId, sidebarCollapsed }) {
                     </div>
 
                     {/* Input field */}
-                    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl">
+                    <div className="mt-4 w-full max-w-xl mx-auto">
                         <div className="relative border border-yellow-500 rounded-xl px-4 py-3 flex items-center gap-2">
                             {mentionDropdown}
                             <input
