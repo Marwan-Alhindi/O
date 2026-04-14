@@ -236,6 +236,14 @@ function Chat({ chatId, sidebarCollapsed }) {
         setShowMentionDropdown(false)
     }
 
+    function clearMentionFragment() {
+        const lastAtIndex = inputText.lastIndexOf('@')
+        if (lastAtIndex !== -1) {
+            setInputText(inputText.slice(0, lastAtIndex))
+        }
+        setShowMentionDropdown(false)
+    }
+
     async function handleSendMessage() {
         if (!inputText.trim()) return
 
@@ -313,7 +321,7 @@ function Chat({ chatId, sidebarCollapsed }) {
         llm.display_name.toLowerCase().startsWith(mentionFilter.toLowerCase())
     )
 
-    const mentionDropdown = showMentionDropdown && filteredLLMs.length > 0 && (
+    const mentionDropdown = showMentionDropdown && (
         <div className="absolute bottom-full mb-2 left-0 w-full bg-zinc-800 border border-zinc-600 rounded-lg overflow-hidden z-10">
             {filteredLLMs.map(llm => (
                 <button
@@ -326,6 +334,23 @@ function Chat({ chatId, sidebarCollapsed }) {
                     <span>{llm.display_name} #{llm.display_number}</span>
                 </button>
             ))}
+            {filteredLLMs.length > 0 && <div className="border-t border-zinc-700" />}
+            <button
+                className="w-full px-4 py-2 flex items-center gap-2 hover:bg-zinc-700 text-left text-yellow-400"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { clearMentionFragment(); setInviteLLMpop(true) }}
+            >
+                <span className="text-lg">+</span>
+                <span>Add an LLM</span>
+            </button>
+            <button
+                className="w-full px-4 py-2 flex items-center gap-2 hover:bg-zinc-700 text-left text-yellow-400"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { clearMentionFragment(); setShowInviteUser(true) }}
+            >
+                <span className="text-lg">+</span>
+                <span>Add a friend</span>
+            </button>
         </div>
     )
 
