@@ -60,7 +60,7 @@ function InviteUser({ chatId, onClose }) {
                             How they join
                         </p>
                         <ol className="space-y-1.5 text-xs text-[var(--color-fg-muted)]">
-                            <li>1. They sign in to O.</li>
+                            <li>1. They sign in to Glyph.</li>
                             <li>2. Click <span className="text-[var(--color-fg)]">+ Join with invite code</span> in the sidebar.</li>
                             <li>3. Paste the code above. They're in.</li>
                         </ol>

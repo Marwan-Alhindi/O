@@ -235,7 +235,7 @@ function AppLayout() {
                         {!sidebarCollapsed && (
                             <button onClick={() => navigate('/app')} className="flex items-center gap-2 px-1">
                                 <img src="/logo-white.png" width={22} height={22} alt="" />
-                                <span className="text-sm font-semibold tracking-tight">O</span>
+                                <span className="text-sm font-semibold tracking-tight">Glyph</span>
                             </button>
                         )}
                         <button
@@ -371,7 +371,7 @@ function AppLayout() {
                 <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-3">
                     <button onClick={() => navigate('/app')} className="flex items-center gap-2">
                         <img src="/logo-white.png" width={22} height={22} alt="" />
-                        <span className="text-sm font-semibold">O</span>
+                        <span className="text-sm font-semibold">Glyph</span>
                     </button>
                     <button onClick={handleCreateChat} className="rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs">
                         New chat

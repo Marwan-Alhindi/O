@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="frontend/public/logo-white.png" alt="O" width="96" />
+  <img src="glyph-frontend/public/logo-white.png" alt="Glyph" width="96" />
 
-  # O
+  # Glyph
 
   **Collaborative LLMs and teammates in the same chat.**
 
@@ -17,17 +17,17 @@
 
 ---
 
-O is a chat workspace where humans and multiple LLMs work together in the same room. Mention any model with `@`, invite teammates, and let the agents call tools — web search, PDF generation, and inviting other LLMs into the conversation.
+Glyph is a chat workspace where humans and multiple LLMs work together in the same room. Mention any model with `@`, invite teammates, and let the agents call tools — web search, PDF generation, and inviting other LLMs into the conversation.
 
 > [!NOTE]
-> O is in active development. Auth and realtime are powered by Supabase; the backend orchestrates LLM tool calls via FastAPI.
+> Glyph is in active development. Auth and realtime are powered by Supabase; the backend orchestrates LLM tool calls via FastAPI.
 
 ## Quickstart
 
 **Backend** — Python + FastAPI
 
 ```bash
-cd backend
+cd glyph-backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -37,18 +37,18 @@ uvicorn main:app --reload --port 8000
 **Frontend** — React + Vite + Tailwind v4
 
 ```bash
-cd frontend
+cd glyph-frontend
 npm install
 npm run dev
 ```
 
 > [!TIP]
-> The backend reads secrets from `backend/.env` (OpenAI, Supabase). The frontend reads from `frontend/.env`.
+> The backend reads secrets from `glyph-backend/.env` (OpenAI, Supabase). The frontend reads from `glyph-frontend/.env`.
 
 ## Repos
 
-- **[`frontend/`](frontend/)** — React 19 + Vite + Tailwind v4 client. Auth, realtime chat, marketing site.
-- **[`backend/`](backend/)** — FastAPI server. LLM orchestration, tool calls (web search, PDF generation, mention/invite LLM), Supabase auth verification.
+- **[`glyph-frontend/`](glyph-frontend/)** — React 19 + Vite + Tailwind v4 client. Auth, realtime chat, marketing site.
+- **[`glyph-backend/`](glyph-backend/)** — FastAPI server. LLM orchestration, tool calls (web search, PDF generation, mention/invite LLM), Supabase auth verification.
 
 ## Features
 
@@ -61,7 +61,7 @@ npm run dev
 ## Frontend structure
 
 ```
-frontend/src/
+glyph-frontend/src/
 ├── app/                    # Authenticated app UI (after login)
 │   ├── components/         # Chat, Message, AIMessage, InviteLLM, InviteUser, LLMContext
 │   ├── pages/              # Chat page
@@ -85,7 +85,7 @@ frontend/src/
 ## Backend structure
 
 ```
-backend/
+glyph-backend/
 ├── main.py            # FastAPI app, routes, request handling
 ├── tools.py           # Agent tools: web_search, create_pdf, mention_llm, invite_llm
 ├── pdfs/              # Generated PDFs (served as downloads)

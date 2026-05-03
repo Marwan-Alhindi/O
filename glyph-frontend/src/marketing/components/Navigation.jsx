@@ -11,8 +11,8 @@ function Navigation({ mobileOpen, setMobileOpen }) {
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-[var(--color-fg)] hover:opacity-90"
         >
-          <img src="/logo-white.png" width={26} height={26} alt="O" />
-          <span className="font-semibold tracking-tight">O</span>
+          <img src="/logo-white.png" width={26} height={26} alt="Glyph" />
+          <span className="font-semibold tracking-tight">Glyph</span>
           <span className="ml-1 hidden rounded-full border border-[var(--color-line)] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[var(--color-fg-muted)] md:inline">
             Beta
           </span>
