@@ -19,7 +19,7 @@ venv/
 /package-lock.json
 
 # Generated PDFs from the create_pdf tool
-backend/pdfs/*.pdf
+o-backend/pdfs/*.pdf
 
 # OS
 .DS_Store

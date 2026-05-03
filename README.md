@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend/public/logo-white.png" alt="O" width="96" />
+  <img src="o-frontend/public/logo-white.png" alt="O" width="96" />
 
   # O
 
@@ -27,7 +27,7 @@ O is a chat workspace where humans and multiple LLMs work together in the same r
 **Backend** — Python + FastAPI
 
 ```bash
-cd backend
+cd o-backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -37,18 +37,18 @@ uvicorn main:app --reload --port 8000
 **Frontend** — React + Vite + Tailwind v4
 
 ```bash
-cd frontend
+cd o-frontend
 npm install
 npm run dev
 ```
 
 > [!TIP]
-> The backend reads secrets from `backend/.env` (OpenAI, Supabase). The frontend reads from `frontend/.env`.
+> The backend reads secrets from `o-backend/.env` (OpenAI, Supabase). The frontend reads from `o-frontend/.env`.
 
 ## Repos
 
-- **[`frontend/`](frontend/)** — React 19 + Vite + Tailwind v4 client. Auth, realtime chat, marketing site.
-- **[`backend/`](backend/)** — FastAPI server. LLM orchestration, tool calls (web search, PDF generation, mention/invite LLM), Supabase auth verification.
+- **[`o-frontend/`](o-frontend/)** — React 19 + Vite + Tailwind v4 client. Auth, realtime chat, marketing site.
+- **[`o-backend/`](o-backend/)** — FastAPI server. LLM orchestration, tool calls (web search, PDF generation, mention/invite LLM), Supabase auth verification.
 
 ## Features
 
@@ -61,7 +61,7 @@ npm run dev
 ## Frontend structure
 
 ```
-frontend/src/
+o-frontend/src/
 ├── app/                    # Authenticated app UI (after login)
 │   ├── components/         # Chat, Message, AIMessage, InviteLLM, InviteUser, LLMContext
 │   ├── pages/              # Chat page
@@ -85,7 +85,7 @@ frontend/src/
 ## Backend structure
 
 ```
-backend/
+o-backend/
 ├── main.py            # FastAPI app, routes, request handling
 ├── tools.py           # Agent tools: web_search, create_pdf, mention_llm, invite_llm
 ├── pdfs/              # Generated PDFs (served as downloads)
