@@ -108,7 +108,7 @@ function Getstarted() {
                     </button>
 
                     <p className="text-center text-[11px] text-[var(--color-fg-subtle)]">
-                        By continuing, you agree to Glyph's Terms and Privacy.
+                        By continuing, you agree to O's Terms and Privacy.
                     </p>
                 </form>
 

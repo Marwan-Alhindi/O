@@ -73,7 +73,7 @@ function Login() {
                 </form>
 
                 <p className="mt-6 text-center text-sm text-[var(--color-fg-muted)]">
-                    New to Glyph?{' '}
+                    New to O?{' '}
                     <button
                         onClick={() => navigate('/getstarted')}
                         className="text-[var(--color-fg)] underline-offset-4 hover:underline"
