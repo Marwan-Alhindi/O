@@ -31,7 +31,7 @@ function Hero() {
       </h1>
 
       <p className="mx-auto mt-6 max-w-2xl text-center text-base leading-relaxed text-[var(--color-fg-muted)] md:text-lg">
-        Glyph brings GPT, Claude, Gemini and your teammates into the same room.
+        O brings GPT, Claude, Gemini and your teammates into the same room.
         Mention a model, share an idea, ship faster — all in one collaborative thread.
       </p>
 
