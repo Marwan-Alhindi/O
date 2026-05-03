@@ -36,8 +36,8 @@ function MarketingLayout() {
       <footer className="border-t border-[var(--color-line-soft)] mt-24">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-10 text-sm text-[var(--color-fg-subtle)] md:flex-row md:items-center">
           <div className="flex items-center gap-2">
-            <img src="/logo-white.svg" width={20} height={20} alt="" />
-            <span className="font-medium tracking-wide text-[var(--color-fg-muted)]">O</span>
+            <img src="/logo-white.png" width={20} height={20} alt="" />
+            <span className="font-medium tracking-wide text-[var(--color-fg-muted)]">Glyph</span>
             <span>· Collaborative LLMs</span>
           </div>
           <div className="flex gap-6">
