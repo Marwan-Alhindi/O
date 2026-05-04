@@ -10,7 +10,10 @@ function AppLayout() {
     const [userMenuOpen, setUserMenuOpen] = useState(false)
     const [leaveChatTarget, setLeaveChatTarget] = useState(null)
     const [leavePending, setLeavePending] = useState(false)
+    const [renamingChatId, setRenamingChatId] = useState(null)
+    const [renameDraft, setRenameDraft] = useState("")
     const userMenuRef = useRef(null)
+    const skipNextRenameBlur = useRef(false)
 
     const { user, logout } = useAuth()
     const navigate = useNavigate()
@@ -116,6 +119,33 @@ function AppLayout() {
     function handleLeaveChat(chat, e) {
         e?.stopPropagation()
         setLeaveChatTarget(chat)
+    }
+
+    function handleRenameStart(chat, e) {
+        e?.stopPropagation()
+        setRenameDraft(chat.name || "")
+        setRenamingChatId(chat.id)
+    }
+
+    async function handleRenameCommit(chat) {
+        const newName = renameDraft.trim()
+        setRenamingChatId(null)
+        if (!newName || newName === chat.name) return
+
+        const { error } = await supabase
+            .from("chats")
+            .update({ name: newName })
+            .eq("id", chat.id)
+        if (error) {
+            alert("Failed to rename chat: " + error.message)
+            return
+        }
+        setChats(prev => prev.map(c => c.id === chat.id ? { ...c, name: newName } : c))
+    }
+
+    function handleRenameCancel() {
+        skipNextRenameBlur.current = true
+        setRenamingChatId(null)
     }
 
     async function confirmLeaveChat() {
@@ -251,25 +281,63 @@ function AppLayout() {
                                 )}
                                 {chats.map(chat => {
                                     const isActive = location.pathname === `/app/chat/${chat.id}`
+                                    const isEditing = renamingChatId === chat.id
                                     return (
                                         <div
                                             key={chat.id}
-                                            onClick={() => navigate(`/app/chat/${chat.id}`)}
-                                            className={`group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                                            onClick={isEditing ? undefined : () => navigate(`/app/chat/${chat.id}`)}
+                                            className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                                                isEditing ? '' : 'cursor-pointer'
+                                            } ${
                                                 isActive
                                                     ? 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'
                                                     : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]'
                                             }`}
                                         >
                                             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-[var(--color-line)] group-hover:bg-[var(--color-fg-subtle)]'}`} />
-                                            <span className="flex-1 truncate">{chat.name || 'Untitled'}</span>
-                                            <button
-                                                onClick={(e) => handleLeaveChat(chat, e)}
-                                                className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-rose-400 group-hover:opacity-100"
-                                                title="Leave chat"
-                                            >
-                                                <CloseIcon size={12} />
-                                            </button>
+                                            {isEditing ? (
+                                                <input
+                                                    autoFocus
+                                                    value={renameDraft}
+                                                    onChange={(e) => setRenameDraft(e.target.value)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault()
+                                                            handleRenameCommit(chat)
+                                                        } else if (e.key === 'Escape') {
+                                                            e.preventDefault()
+                                                            handleRenameCancel()
+                                                        }
+                                                    }}
+                                                    onBlur={() => {
+                                                        if (skipNextRenameBlur.current) {
+                                                            skipNextRenameBlur.current = false
+                                                            return
+                                                        }
+                                                        handleRenameCommit(chat)
+                                                    }}
+                                                    className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-fg-subtle)]"
+                                                />
+                                            ) : (
+                                                <>
+                                                    <span className="flex-1 truncate">{chat.name || 'Untitled'}</span>
+                                                    <button
+                                                        onClick={(e) => handleRenameStart(chat, e)}
+                                                        className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)] group-hover:opacity-100"
+                                                        title="Rename chat"
+                                                    >
+                                                        <PencilIcon size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => handleLeaveChat(chat, e)}
+                                                        className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-rose-400 group-hover:opacity-100"
+                                                        title="Leave chat"
+                                                    >
+                                                        <CloseIcon size={12} />
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     )
                                 })}
@@ -467,6 +535,13 @@ function LogoutIcon() {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+    )
+}
+function PencilIcon({ size = 14 }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
         </svg>
     )
 }
