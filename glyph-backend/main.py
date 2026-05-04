@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
@@ -105,15 +106,25 @@ def build_context_messages(chat_id: str, llm_id: str, system_prompt: str) -> lis
     return api_messages
 
 
-def run_agent(chat_id: str, llm_id: str, user_id: str) -> str:
-    """Run the agent loop for one LLM turn. Persists the final reply and returns it."""
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def run_agent_stream(chat_id: str, llm_id: str, user_id: str):
+    """Generator yielding SSE events as the agent runs.
+
+    Token-level streaming for the final answer. Tool-call iterations accumulate
+    silently and emit a 'tool' event so the client can keep the connection alive.
+    On completion, persists the final message and yields a 'done' event with
+    the new message id.
+    """
     llm_result = supabase.table("invited_llms").select("*").eq("id", llm_id).single().execute()
     llm = llm_result.data
     if not llm:
-        raise HTTPException(status_code=404, detail="LLM not found")
+        yield _sse({"type": "error", "detail": "LLM not found"})
+        return
 
     api_messages = build_context_messages(chat_id, llm_id, llm.get("model_instruct") or "")
-
     ctx = {
         "chat_id": chat_id,
         "calling_llm_id": llm_id,
@@ -121,63 +132,91 @@ def run_agent(chat_id: str, llm_id: str, user_id: str) -> str:
         "supabase": supabase,
     }
 
-    for _ in range(MAX_ITERATIONS):
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=api_messages,
-            tools=TOOL_SCHEMAS,
-            tool_choice="auto",
-        )
-        msg = response.choices[0].message
+    final_text = ""
 
-        if not msg.tool_calls:
-            final_text = msg.content or ""
-            supabase.table("messages").insert({
-                "chat_id": chat_id,
-                "sender_type": "llm",
-                "sender_llm_id": llm_id,
-                "content": final_text,
-            }).execute()
-            return final_text
+    for _ in range(MAX_ITERATIONS):
+        try:
+            stream = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=api_messages,
+                tools=TOOL_SCHEMAS,
+                tool_choice="auto",
+                stream=True,
+            )
+        except Exception as e:
+            yield _sse({"type": "error", "detail": f"Model error: {e}"})
+            return
+
+        accumulated_content = ""
+        accumulated_tool_calls: dict[int, dict] = {}
+
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+
+            if delta.content:
+                accumulated_content += delta.content
+                yield _sse({"type": "token", "content": delta.content})
+
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in accumulated_tool_calls:
+                        accumulated_tool_calls[idx] = {"id": tc.id or "", "name": "", "arguments": ""}
+                    if tc.id:
+                        accumulated_tool_calls[idx]["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        accumulated_tool_calls[idx]["name"] += tc.function.name
+                    if tc.function and tc.function.arguments:
+                        accumulated_tool_calls[idx]["arguments"] += tc.function.arguments
+
+        if not accumulated_tool_calls:
+            final_text = accumulated_content
+            break
 
         api_messages.append({
             "role": "assistant",
-            "content": msg.content or "",
+            "content": accumulated_content,
             "tool_calls": [
                 {
-                    "id": tc.id,
+                    "id": tc["id"],
                     "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
                 }
-                for tc in msg.tool_calls
+                for tc in accumulated_tool_calls.values()
             ],
         })
 
-        for tc in msg.tool_calls:
+        for tc in accumulated_tool_calls.values():
+            yield _sse({"type": "tool", "name": tc["name"]})
             try:
-                args = json.loads(tc.function.arguments or "{}")
+                args = json.loads(tc["arguments"] or "{}")
             except json.JSONDecodeError as e:
                 tool_output = f"Could not parse arguments: {e}"
             else:
-                tool_output = execute_tool(tc.function.name, args, ctx)
+                tool_output = execute_tool(tc["name"], args, ctx)
 
             api_messages.append({
                 "role": "tool",
-                "tool_call_id": tc.id,
+                "tool_call_id": tc["id"],
                 "content": tool_output,
             })
+    else:
+        final_text = "I hit my step limit before I could finish. Please ask again with a narrower scope."
 
-    fallback = "I hit my step limit before I could finish. Please ask again with a narrower scope."
-    supabase.table("messages").insert({
+    if not final_text.strip():
+        final_text = "(empty response)"
+
+    insert_result = supabase.table("messages").insert({
         "chat_id": chat_id,
         "sender_type": "llm",
         "sender_llm_id": llm_id,
-        "content": fallback,
+        "content": final_text,
     }).execute()
-    return fallback
+    msg_id = insert_result.data[0]["id"] if insert_result.data else None
+
+    yield _sse({"type": "done", "message_id": msg_id, "content": final_text})
 
 
 class InviteLLMRequest(BaseModel):
@@ -221,8 +260,15 @@ def invite_llm(body: InviteLLMRequest, authorization: str = Header()):
 def ask_llm(body: AskLLMRequest, authorization: str = Header()):
     user_id = get_current_user(authorization)
     verify_participant(user_id, body.chat_id)
-    text = run_agent(chat_id=body.chat_id, llm_id=body.llm_id, user_id=user_id)
-    return {"response": text}
+    return StreamingResponse(
+        run_agent_stream(body.chat_id, body.llm_id, user_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # Mount invitation routes (defined in invitations.py, imported here so it sees

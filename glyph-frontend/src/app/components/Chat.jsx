@@ -285,7 +285,7 @@ function Chat({ chatId }) {
         }
 
         for (const llm of targetLLMs) {
-            setPendingLLMs(prev => ({ ...prev, [llm.id]: true }))
+            setPendingLLMs(prev => ({ ...prev, [llm.id]: { text: "" } }))
             try {
                 const res = await fetch(`${API_BASE}/askLLM`, {
                     method: "POST",
@@ -297,9 +297,39 @@ function Chat({ chatId }) {
                     console.error("Backend ask error:", err)
                     alert("LLM error: " + (err.detail || res.statusText))
                     setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                    continue
                 }
-                // On mobile, surface the response side
                 setMobileTab("models")
+
+                // Read SSE stream (data: {...}\n\n events)
+                const reader = res.body.getReader()
+                const decoder = new TextDecoder()
+                let buffer = ""
+                while (true) {
+                    const { done, value } = await reader.read()
+                    if (done) break
+                    buffer += decoder.decode(value, { stream: true })
+                    const events = buffer.split("\n\n")
+                    buffer = events.pop() || ""
+                    for (const evt of events) {
+                        if (!evt.startsWith("data: ")) continue
+                        let data
+                        try { data = JSON.parse(evt.slice(6)) } catch { continue }
+                        if (data.type === "token") {
+                            setPendingLLMs(prev => {
+                                const cur = prev[llm.id]
+                                if (!cur) return prev
+                                return { ...prev, [llm.id]: { ...cur, text: cur.text + data.content } }
+                            })
+                        } else if (data.type === "error") {
+                            console.error("Stream error:", data.detail)
+                            alert("LLM error: " + (data.detail || "stream failed"))
+                            setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                        }
+                        // 'tool' and 'done' events: realtime push will deliver the
+                        // finalized message and clear the pending state.
+                    }
+                }
             } catch (err) {
                 console.error("Ask fetch error:", err)
                 alert(`Could not reach backend at ${API_BASE}: ${err.message}`)
@@ -649,11 +679,13 @@ function Chat({ chatId }) {
                             )
                         })}
 
-                        {/* Pending "thinking" placeholders */}
-                        {Object.keys(pendingLLMs).map(llmId => {
+                        {/* Pending placeholders — thinking dots until first token, streaming text after */}
+                        {Object.entries(pendingLLMs).map(([llmId, state]) => {
                             const llm = invitedLLMs.find(l => l.id === llmId)
                             if (!llm) return null
                             const c = getLLMColor(llm.display_number)
+                            const text = (state && state.text) || ""
+                            const hasText = text.length > 0
                             return (
                                 <div
                                     key={`pending-${llmId}`}
@@ -664,13 +696,20 @@ function Chat({ chatId }) {
                                             {getLLMInitials(llm.display_name)}
                                         </span>
                                         <span className={`text-sm font-medium ${c.text}`}>{llm.display_name}</span>
-                                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">thinking…</span>
+                                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">{hasText ? 'streaming…' : 'thinking…'}</span>
                                     </header>
-                                    <div className="flex items-center gap-1.5 px-4 py-4">
-                                        <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} />
-                                        <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.16s' }} />
-                                        <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.32s' }} />
-                                    </div>
+                                    {hasText ? (
+                                        <div className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-[var(--color-fg)]">
+                                            {text}
+                                            <span className="ml-0.5 inline-block h-3.5 w-px translate-y-0.5 animate-pulse bg-[var(--color-fg-subtle)]" />
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1.5 px-4 py-4">
+                                            <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} />
+                                            <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.16s' }} />
+                                            <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.32s' }} />
+                                        </div>
+                                    )}
                                 </div>
                             )
                         })}
