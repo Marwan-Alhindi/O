@@ -1,9 +1,12 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "../../contexts/AuthContext"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { apiFetch } from "../../services/supabase"
 
 function Getstarted() {
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const inviteToken = searchParams.get("invite")
     const { register } = useAuth()
     const [email, setEmail] = useState("")
     const [firstName, setFirstName] = useState("")
@@ -12,6 +15,17 @@ function Getstarted() {
     const [confirmPassword, setConfirmPassword] = useState("")
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
+    const [invitePreview, setInvitePreview] = useState(null)
+
+    useEffect(() => {
+        if (!inviteToken) return
+        apiFetch(`/invitations/peek?token=${encodeURIComponent(inviteToken)}`, { auth: false })
+            .then(p => {
+                setInvitePreview(p)
+                if (p?.email) setEmail(p.email)
+            })
+            .catch(err => setError(err.detail || err.message || "This invitation is no longer valid."))
+    }, [inviteToken])
 
     async function handleRegister(e) {
         e.preventDefault()
@@ -29,7 +43,7 @@ function Getstarted() {
         setLoading(true)
         try {
             await register(email, firstName, lastName, password)
-            navigate('/app')
+            navigate(inviteToken ? `/invite/${inviteToken}` : '/app')
         } catch (err) {
             setError(err.message)
         } finally {
@@ -44,7 +58,9 @@ function Getstarted() {
                     <img src="/logo-white.png" width={36} height={36} alt="" />
                     <h1 className="mt-4 text-2xl font-semibold tracking-tight">Create your account</h1>
                     <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-                        Start free. Bring models and teammates into the same chat.
+                        {invitePreview
+                            ? `${invitePreview.inviter_name} invited you to ${invitePreview.chat_name}.`
+                            : "Start free. Bring models and teammates into the same chat."}
                     </p>
                 </div>
 
@@ -64,6 +80,7 @@ function Getstarted() {
                         placeholder="you@company.com"
                         value={email}
                         onChange={setEmail}
+                        readOnly={Boolean(invitePreview)}
                     />
 
                     <div className="grid grid-cols-2 gap-3">
@@ -126,7 +143,7 @@ function Getstarted() {
     )
 }
 
-function Field({ label, type, placeholder, value, onChange }) {
+function Field({ label, type, placeholder, value, onChange, readOnly = false }) {
     return (
         <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-[var(--color-fg-muted)]">{label}</span>
@@ -136,7 +153,8 @@ function Field({ label, type, placeholder, value, onChange }) {
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 required
-                className="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-2.5 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)] outline-none transition-colors focus:border-[var(--color-fg-subtle)] focus:ring-2 focus:ring-white/10"
+                readOnly={readOnly}
+                className={`w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-2.5 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)] outline-none transition-colors focus:border-[var(--color-fg-subtle)] focus:ring-2 focus:ring-white/10 ${readOnly ? 'cursor-not-allowed opacity-70' : ''}`}
             />
         </label>
     )

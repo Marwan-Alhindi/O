@@ -16,6 +16,7 @@ import Getstarted from './marketing/pages/Getstarted'
 
 // App Pages
 import ChatPage from './app/pages/ChatPage'
+import AcceptInvite from './app/pages/AcceptInvite'
 
 // Auth
 import ProtectedRoute from './components/ProtectedRoute'
@@ -30,7 +31,8 @@ const router = createBrowserRouter([
         children: [
           { path: '', element: <Landing /> },
           { path: 'login', element: <Login /> },
-          { path: 'getstarted', element: <Getstarted /> }
+          { path: 'getstarted', element: <Getstarted /> },
+          { path: 'invite/:token', element: <AcceptInvite /> }
         ]
       },
       {

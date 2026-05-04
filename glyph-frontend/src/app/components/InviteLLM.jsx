@@ -3,20 +3,14 @@ import { getLLMColor, getLLMInitials, modelTypeLabel } from "../utils/llmColors"
 
 function InviteLLM({ onClose, onInvite, invitedLLMs }) {
     const [name, setName] = useState("")
-    const [modelType, setModelType] = useState("openai")
-    const [instructions, setInstructions] = useState("")
-    const [connections, setConnections] = useState(["user"])
+    const [modelType, setModelType] = useState("glyph")
 
     const nextNumber = (invitedLLMs.reduce((m, l) => Math.max(m, l.display_number || 0), 0) || 0) + 1
     const previewColor = getLLMColor(nextNumber)
 
-    function toggleConnection(id) {
-        setConnections(prev => (prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]))
-    }
-
     function handleConfirm() {
         if (!name.trim()) return
-        onInvite(name, modelType, instructions, connections)
+        onInvite(name, modelType, "", ["user"])
     }
 
     return (
@@ -64,60 +58,15 @@ function InviteLLM({ onClose, onInvite, invitedLLMs }) {
                         />
                     </Field>
 
-                    <Field label="Model">
+                    <Field label="Model" hint="Glyph (auto) is managed for you.">
                         <select
                             value={modelType}
                             onChange={(e) => setModelType(e.target.value)}
                             className="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-fg-subtle)]"
                         >
+                            <option value="glyph">Glyph (auto)</option>
                             <option value="openai">ChatGPT (GPT-4o)</option>
                         </select>
-                    </Field>
-
-                    <Field label="Instructions" hint="Guide the model's tone, role, or focus.">
-                        <textarea
-                            rows={3}
-                            placeholder="You are a senior product designer. Be concise and pragmatic."
-                            className="w-full resize-none rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)] outline-none focus:border-[var(--color-fg-subtle)]"
-                            value={instructions}
-                            onChange={(e) => setInstructions(e.target.value)}
-                        />
-                    </Field>
-
-                    <Field label="Connect to" hint="Decide who this model can read.">
-                        <div className="space-y-1.5">
-                            <ConnectionRow
-                                checked={connections.includes("user")}
-                                onChange={() => toggleConnection("user")}
-                                avatar={
-                                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-sky-400 text-[10px] font-semibold text-black">
-                                        U
-                                    </span>
-                                }
-                                label="All teammates"
-                                sub="Reads messages from any human in the chat"
-                            />
-                            {invitedLLMs.map(llm => {
-                                const c = getLLMColor(llm.display_number)
-                                return (
-                                    <ConnectionRow
-                                        key={llm.id}
-                                        checked={connections.includes(llm.id)}
-                                        onChange={() => toggleConnection(llm.id)}
-                                        avatar={
-                                            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${c.avatarBg} text-[10px] font-semibold ${c.avatarText}`}>
-                                                {getLLMInitials(llm.display_name)}
-                                            </span>
-                                        }
-                                        label={llm.display_name}
-                                        sub={`${modelTypeLabel(llm.model_type)} · #${llm.display_number}`}
-                                    />
-                                )
-                            })}
-                            {invitedLLMs.length === 0 && (
-                                <p className="px-1 text-xs text-[var(--color-fg-subtle)]">No other models in this chat yet.</p>
-                            )}
-                        </div>
                     </Field>
                 </div>
 
@@ -151,30 +100,6 @@ function Field({ label, hint, children }) {
             </div>
             {children}
         </div>
-    )
-}
-
-function ConnectionRow({ checked, onChange, avatar, label, sub }) {
-    return (
-        <label
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-colors ${
-                checked
-                    ? 'border-[var(--color-fg-subtle)] bg-[var(--color-surface-2)]'
-                    : 'border-[var(--color-line-soft)] bg-[var(--color-surface-2)]/40 hover:bg-[var(--color-surface-2)]'
-            }`}
-        >
-            <input
-                type="checkbox"
-                checked={checked}
-                onChange={onChange}
-                className="h-4 w-4 accent-white"
-            />
-            {avatar}
-            <div className="min-w-0">
-                <div className="truncate text-sm text-[var(--color-fg)]">{label}</div>
-                <div className="truncate text-[10px] text-[var(--color-fg-subtle)]">{sub}</div>
-            </div>
-        </label>
     )
 }
 

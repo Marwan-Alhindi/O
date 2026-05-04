@@ -105,7 +105,7 @@ def build_context_messages(chat_id: str, llm_id: str, system_prompt: str) -> lis
     return api_messages
 
 
-def run_agent(chat_id: str, llm_id: str, user_id: str, depth: int = 0) -> str:
+def run_agent(chat_id: str, llm_id: str, user_id: str) -> str:
     """Run the agent loop for one LLM turn. Persists the final reply and returns it."""
     llm_result = supabase.table("invited_llms").select("*").eq("id", llm_id).single().execute()
     llm = llm_result.data
@@ -118,10 +118,7 @@ def run_agent(chat_id: str, llm_id: str, user_id: str, depth: int = 0) -> str:
         "chat_id": chat_id,
         "calling_llm_id": llm_id,
         "user_id": user_id,
-        "depth": depth,
         "supabase": supabase,
-        "run_agent": run_agent,
-        "generate_join_message": generate_join_message,
     }
 
     for _ in range(MAX_ITERATIONS):
@@ -226,3 +223,9 @@ def ask_llm(body: AskLLMRequest, authorization: str = Header()):
     verify_participant(user_id, body.chat_id)
     text = run_agent(chat_id=body.chat_id, llm_id=body.llm_id, user_id=user_id)
     return {"response": text}
+
+
+# Mount invitation routes (defined in invitations.py, imported here so it sees
+# the already-initialized `supabase` client and `get_current_user`).
+from invitations import router as invitations_router
+app.include_router(invitations_router)

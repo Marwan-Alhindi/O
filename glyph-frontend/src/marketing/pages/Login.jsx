@@ -1,9 +1,11 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "../../contexts/AuthContext"
 import { useState } from "react"
 
 function Login() {
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const inviteToken = searchParams.get("invite")
     const { login } = useAuth()
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
@@ -16,7 +18,7 @@ function Login() {
         setLoading(true)
         try {
             await login(email, password)
-            navigate('/app')
+            navigate(inviteToken ? `/invite/${inviteToken}` : '/app')
         } catch (err) {
             setError(err.message)
         } finally {

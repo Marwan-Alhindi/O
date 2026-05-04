@@ -22,11 +22,17 @@ function Chat({ chatId }) {
     const [loading, setLoading] = useState(true)
     const [pendingLLMs, setPendingLLMs] = useState({}) // { llmId: true }
     const [mobileTab, setMobileTab] = useState("team") // "team" | "models"
+    const [teamWidthPct, setTeamWidthPct] = useState(() => {
+        const saved = parseFloat(localStorage.getItem("glyph.teamWidthPct"))
+        return Number.isFinite(saved) && saved >= 20 && saved <= 80 ? saved : 47
+    })
+    const [isResizing, setIsResizing] = useState(false)
 
     const { user, session } = useAuth()
     const teamScrollRef = useRef(null)
     const modelsScrollRef = useRef(null)
     const inputRef = useRef(null)
+    const splitRef = useRef(null)
 
     // Load chat metadata + messages + LLMs + profiles
     useEffect(() => {
@@ -301,6 +307,44 @@ function Chat({ chatId }) {
         const llm = invitedLLMs.find(l => l.id === llmId)
         if (llm) setContextLLM(llm)
     }
+
+    function handleSplitDragStart(e) {
+        e.preventDefault()
+        setIsResizing(true)
+    }
+
+    useEffect(() => {
+        if (!isResizing) return
+
+        function onMove(e) {
+            const container = splitRef.current
+            if (!container) return
+            const rect = container.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            const pct = (x / rect.width) * 100
+            const clamped = Math.max(20, Math.min(80, pct))
+            setTeamWidthPct(clamped)
+        }
+        function onUp() {
+            setIsResizing(false)
+        }
+
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+
+        return () => {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+        }
+    }, [isResizing])
+
+    useEffect(() => {
+        localStorage.setItem("glyph.teamWidthPct", String(teamWidthPct))
+    }, [teamWidthPct])
 
     const filteredLLMs = invitedLLMs.filter(llm =>
         llm.display_name.toLowerCase().startsWith(mentionFilter.toLowerCase())
@@ -638,11 +682,22 @@ function Chat({ chatId }) {
             </div>
 
             {/* Two-pane layout */}
-            <div className="flex min-h-0 flex-1 flex-col md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] md:flex-row">
-                <div className={`flex min-h-0 flex-1 ${mobileTab === 'team' ? 'flex' : 'hidden'} md:flex`}>
+            <div
+                ref={splitRef}
+                className="flex min-h-0 flex-1 flex-col md:flex-row"
+                style={{ '--team-w': `${teamWidthPct}%`, '--models-w': `${100 - teamWidthPct}%` }}
+            >
+                <div className={`min-h-0 w-full flex-1 md:flex md:w-[var(--team-w)] md:flex-none ${mobileTab === 'team' ? 'flex' : 'hidden md:flex'}`}>
                     {teamPane}
                 </div>
-                <div className={`flex min-h-0 flex-1 ${mobileTab === 'models' ? 'flex' : 'hidden'} md:flex`}>
+                <div
+                    onMouseDown={handleSplitDragStart}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize panes"
+                    className={`hidden md:block w-1 shrink-0 cursor-col-resize transition-colors ${isResizing ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-line-soft)] hover:bg-[var(--color-fg-subtle)]'}`}
+                />
+                <div className={`min-h-0 w-full flex-1 md:flex md:w-[var(--models-w)] md:flex-none ${mobileTab === 'models' ? 'flex' : 'hidden md:flex'}`}>
                     {modelsPane}
                 </div>
             </div>

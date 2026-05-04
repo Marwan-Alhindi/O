@@ -20,79 +20,52 @@ function AIMessage({ text }) {
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                    code({ inline, className, children, ...props }) {
+                    code({ className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || '')
                         const codeString = String(children).replace(/\n$/, '')
+                        const isBlock = !!match || codeString.includes('\n')
+
+                        if (!isBlock) {
+                            return (
+                                <code
+                                    className="rounded bg-[var(--color-surface-3)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--color-fg)]"
+                                    {...props}
+                                >
+                                    {children}
+                                </code>
+                            )
+                        }
+
+                        const language = match?.[1] ?? 'text'
                         const codeId = codeString.slice(0, 24)
 
-                        if (!inline && match) {
-                            return (
-                                <div className="relative my-3 overflow-hidden rounded-xl border border-[var(--color-line)]">
-                                    <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] bg-[var(--color-surface-3)] px-3 py-1.5 text-[11px] text-[var(--color-fg-muted)]">
-                                        <span className="font-mono uppercase tracking-wider">{match[1]}</span>
-                                        <button
-                                            onClick={() => copyToClipboard(codeString, codeId)}
-                                            className="rounded-md px-2 py-0.5 text-[10px] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
-                                        >
-                                            {copied === codeId ? '✓ Copied' : 'Copy'}
-                                        </button>
-                                    </div>
-                                    <SyntaxHighlighter
-                                        style={oneDark}
-                                        language={match[1]}
-                                        PreTag="div"
-                                        customStyle={{
-                                            margin: 0,
-                                            borderRadius: 0,
-                                            padding: '14px 16px',
-                                            background: 'transparent',
-                                            fontSize: '12.5px',
-                                        }}
-                                        {...props}
-                                    >
-                                        {codeString}
-                                    </SyntaxHighlighter>
-                                </div>
-                            )
-                        }
-
-                        if (!inline && !match) {
-                            return (
-                                <div className="relative my-3 overflow-hidden rounded-xl border border-[var(--color-line)]">
-                                    <div className="flex items-center justify-end border-b border-[var(--color-line-soft)] bg-[var(--color-surface-3)] px-3 py-1.5 text-[11px] text-[var(--color-fg-muted)]">
-                                        <button
-                                            onClick={() => copyToClipboard(codeString, codeId)}
-                                            className="rounded-md px-2 py-0.5 text-[10px] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
-                                        >
-                                            {copied === codeId ? '✓ Copied' : 'Copy'}
-                                        </button>
-                                    </div>
-                                    <SyntaxHighlighter
-                                        style={oneDark}
-                                        language="text"
-                                        PreTag="div"
-                                        customStyle={{
-                                            margin: 0,
-                                            borderRadius: 0,
-                                            padding: '14px 16px',
-                                            background: 'transparent',
-                                            fontSize: '12.5px',
-                                        }}
-                                        {...props}
-                                    >
-                                        {codeString}
-                                    </SyntaxHighlighter>
-                                </div>
-                            )
-                        }
-
                         return (
-                            <code
-                                className="rounded bg-[var(--color-surface-3)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--color-fg)]"
-                                {...props}
-                            >
-                                {children}
-                            </code>
+                            <div className="relative my-3 overflow-hidden rounded-xl border border-[var(--color-line)]">
+                                <div className={`flex items-center ${match ? 'justify-between' : 'justify-end'} border-b border-[var(--color-line-soft)] bg-[var(--color-surface-3)] px-3 py-1.5 text-[11px] text-[var(--color-fg-muted)]`}>
+                                    {match && <span className="font-mono uppercase tracking-wider">{language}</span>}
+                                    <button
+                                        onClick={() => copyToClipboard(codeString, codeId)}
+                                        className="rounded-md px-2 py-0.5 text-[10px] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
+                                    >
+                                        {copied === codeId ? '✓ Copied' : 'Copy'}
+                                    </button>
+                                </div>
+                                <SyntaxHighlighter
+                                    style={oneDark}
+                                    language={language}
+                                    PreTag="div"
+                                    customStyle={{
+                                        margin: 0,
+                                        borderRadius: 0,
+                                        padding: '14px 16px',
+                                        background: 'transparent',
+                                        fontSize: '12.5px',
+                                    }}
+                                    {...props}
+                                >
+                                    {codeString}
+                                </SyntaxHighlighter>
+                            </div>
                         )
                     },
                     p({ children }) {
