@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, Fragment } from "react"
 import Message from "./Message"
 import AIMessage from "./AIMessage"
 import InviteLLM from "./InviteLLM"
@@ -24,11 +24,35 @@ function Chat({ chatId }) {
     const [loading, setLoading] = useState(true)
     const [pendingLLMs, setPendingLLMs] = useState({}) // { llmId: true }
     const [mobileTab, setMobileTab] = useState("team") // "team" | "models"
-    const [teamWidthPct, setTeamWidthPct] = useState(() => {
-        const saved = parseFloat(localStorage.getItem("glyph.teamWidthPct"))
-        return Number.isFinite(saved) && saved >= 20 && saved <= 80 ? saved : 47
+    const [panelWidths, setPanelWidths] = useState(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem("glyph.panelWidths") || "null")
+            if (saved && typeof saved === "object") {
+                return { team: saved.team ?? 47, models: saved.models ?? 53, files: saved.files ?? 0 }
+            }
+            // Migrate from the older two-pane key
+            const oldTeamPct = parseFloat(localStorage.getItem("glyph.teamWidthPct"))
+            if (Number.isFinite(oldTeamPct) && oldTeamPct >= 20 && oldTeamPct <= 80) {
+                return { team: oldTeamPct, models: 100 - oldTeamPct, files: 0 }
+            }
+        } catch {}
+        return { team: 47, models: 53, files: 0 }
     })
     const [isResizing, setIsResizing] = useState(false)
+    const [activeResize, setActiveResize] = useState(null)
+    const [openPanels, setOpenPanels] = useState(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem("glyph.openPanels") || "")
+            if (saved && typeof saved === "object") {
+                return {
+                    team: saved.team !== false,
+                    models: saved.models !== false,
+                    files: !!saved.files,
+                }
+            }
+        } catch {}
+        return { team: true, models: true, files: false }
+    })
 
     const { user, session } = useAuth()
     const teamScrollRef = useRef(null)
@@ -343,25 +367,47 @@ function Chat({ chatId }) {
         if (llm) setContextLLM(llm)
     }
 
-    function handleSplitDragStart(e) {
-        e.preventDefault()
-        setIsResizing(true)
+    function handleSplitDragStart(dividerIndex) {
+        return (e) => {
+            e.preventDefault()
+            const visible = ['team', 'models', 'files'].filter(k => openPanels[k])
+            if (dividerIndex < 0 || dividerIndex >= visible.length - 1) return
+            const leftKey = visible[dividerIndex]
+            const rightKey = visible[dividerIndex + 1]
+            setIsResizing(true)
+            setActiveResize({
+                leftKey,
+                rightKey,
+                startX: e.clientX,
+                startLeft: panelWidths[leftKey],
+                startRight: panelWidths[rightKey],
+            })
+        }
     }
 
     useEffect(() => {
-        if (!isResizing) return
+        if (!isResizing || !activeResize) return
 
         function onMove(e) {
             const container = splitRef.current
             if (!container) return
             const rect = container.getBoundingClientRect()
-            const x = e.clientX - rect.left
-            const pct = (x / rect.width) * 100
-            const clamped = Math.max(20, Math.min(80, pct))
-            setTeamWidthPct(clamped)
+            const deltaPx = e.clientX - activeResize.startX
+            const deltaPct = (deltaPx / rect.width) * 100
+            const MIN = 15
+            let newLeft = activeResize.startLeft + deltaPct
+            let newRight = activeResize.startRight - deltaPct
+            if (newLeft < MIN) { newRight -= (MIN - newLeft); newLeft = MIN }
+            if (newRight < MIN) { newLeft -= (MIN - newRight); newRight = MIN }
+            setPanelWidths(prev => ({
+                ...prev,
+                [activeResize.leftKey]: newLeft,
+                [activeResize.rightKey]: newRight,
+            }))
         }
         function onUp() {
             setIsResizing(false)
+            setActiveResize(null)
         }
 
         window.addEventListener('mousemove', onMove)
@@ -375,11 +421,61 @@ function Chat({ chatId }) {
             document.body.style.cursor = ''
             document.body.style.userSelect = ''
         }
-    }, [isResizing])
+    }, [isResizing, activeResize])
 
     useEffect(() => {
-        localStorage.setItem("glyph.teamWidthPct", String(teamWidthPct))
-    }, [teamWidthPct])
+        localStorage.setItem("glyph.panelWidths", JSON.stringify(panelWidths))
+    }, [panelWidths])
+
+    // Renormalize visible widths to sum to 100 whenever the visible set changes
+    useEffect(() => {
+        setPanelWidths(prev => {
+            const visible = ['team', 'models', 'files'].filter(k => openPanels[k])
+            if (visible.length === 0) return prev
+            const next = { ...prev }
+            const zeros = visible.filter(k => (prev[k] || 0) === 0)
+            if (zeros.length > 0) {
+                const newShare = 100 / visible.length
+                zeros.forEach(k => { next[k] = newShare })
+                const reserved = newShare * zeros.length
+                const remaining = 100 - reserved
+                const nonZeros = visible.filter(k => !zeros.includes(k))
+                const nzSum = nonZeros.reduce((s, k) => s + prev[k], 0)
+                if (nzSum > 0) {
+                    nonZeros.forEach(k => { next[k] = prev[k] * (remaining / nzSum) })
+                } else {
+                    nonZeros.forEach(k => { next[k] = remaining / nonZeros.length })
+                }
+                return next
+            }
+            const total = visible.reduce((s, k) => s + prev[k], 0)
+            if (Math.abs(total - 100) > 0.5) {
+                const factor = 100 / total
+                visible.forEach(k => { next[k] = prev[k] * factor })
+                return next
+            }
+            return prev
+        })
+    }, [openPanels])
+
+    useEffect(() => {
+        localStorage.setItem("glyph.openPanels", JSON.stringify(openPanels))
+    }, [openPanels])
+
+    function togglePanel(name) {
+        setOpenPanels(prev => {
+            const next = { ...prev, [name]: !prev[name] }
+            if (!next.team && !next.models && !next.files) return prev
+            return next
+        })
+    }
+
+    useEffect(() => {
+        if (!openPanels[mobileTab]) {
+            const first = ['team', 'models', 'files'].find(k => openPanels[k])
+            if (first) setMobileTab(first)
+        }
+    }, [openPanels, mobileTab])
 
     const filteredLLMs = invitedLLMs.filter(llm =>
         llm.display_name.toLowerCase().startsWith(mentionFilter.toLowerCase())
@@ -394,6 +490,31 @@ function Chat({ chatId }) {
             else team.push(msg)
         }
         return { teamMessages: team, modelMessages: model }
+    }, [messages])
+
+    // Extract generated files from message content (markdown links to known extensions)
+    const generatedFiles = useMemo(() => {
+        const out = []
+        const seen = new Set()
+        const re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+?\.(pdf|pptx|docx|xlsx|py|js|ts|tsx|md|txt|csv|json|zip|png|jpe?g|svg))\)/gi
+        for (const m of messages) {
+            const content = m.content || ""
+            let match
+            while ((match = re.exec(content)) !== null) {
+                const url = match[2]
+                if (seen.has(url)) continue
+                seen.add(url)
+                out.push({
+                    id: url,
+                    name: match[1].replace(/^Download\s+/i, ""),
+                    url,
+                    ext: match[3].toLowerCase(),
+                    created_at: m.created_at,
+                    sender_llm_id: m.sender_type === 'llm' ? m.sender_llm_id : null,
+                })
+            }
+        }
+        return out.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     }, [messages])
 
     const userCount = useMemo(() => Object.keys(profilesById).length || 1, [profilesById])
@@ -557,9 +678,16 @@ function Chat({ chatId }) {
                 </div>
             </div>
 
-            <div className="flex items-center gap-1">
-                <IconBtn label="Invite model" onClick={() => setInviteLLMpop(true)}><BotIcon /></IconBtn>
-                <IconBtn label="Invite teammate" onClick={() => setShowInviteUser(true)}><UserPlusIcon /></IconBtn>
+            <div className="flex items-center gap-2">
+                <div className="hidden items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 md:flex">
+                    <PanelToggleBtn active={openPanels.team} onClick={() => togglePanel('team')} label="Team chat"><PeopleIcon /></PanelToggleBtn>
+                    <PanelToggleBtn active={openPanels.models} onClick={() => togglePanel('models')} label="Workspace"><BotIcon /></PanelToggleBtn>
+                    <PanelToggleBtn active={openPanels.files} onClick={() => togglePanel('files')} label="Files"><FileIcon /></PanelToggleBtn>
+                </div>
+                <div className="flex items-center gap-1">
+                    <IconBtn label="Invite model" onClick={() => setInviteLLMpop(true)}><BotIcon /></IconBtn>
+                    <IconBtn label="Invite teammate" onClick={() => setShowInviteUser(true)}><UserPlusIcon /></IconBtn>
+                </div>
             </div>
         </div>
     )
@@ -719,6 +847,52 @@ function Chat({ chatId }) {
         </section>
     )
 
+    /* ---------- Files pane ---------- */
+    const filesPane = (
+        <section className="flex min-h-0 flex-1 flex-col border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:border-l">
+            <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                    Files
+                </span>
+                <span className="text-[10px] text-[var(--color-fg-subtle)]">
+                    {generatedFiles.length} {generatedFiles.length === 1 ? 'file' : 'files'}
+                </span>
+            </div>
+            <div className="lp-scroll flex-1 space-y-2 overflow-y-auto px-4 py-4">
+                {generatedFiles.length === 0 ? (
+                    <EmptyFiles />
+                ) : (
+                    generatedFiles.map(f => {
+                        const llm = f.sender_llm_id ? invitedLLMs.find(l => l.id === f.sender_llm_id) : null
+                        const c = llm ? getLLMColor(llm.display_number) : null
+                        return (
+                            <div key={f.id} className="flex items-center gap-3 rounded-xl border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] p-3">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-3)] text-[10px] font-semibold uppercase text-[var(--color-fg-muted)]">
+                                    {f.ext}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="truncate text-sm text-[var(--color-fg)]">{f.name}</div>
+                                    <div className="text-[10px] text-[var(--color-fg-subtle)]">
+                                        {llm && c && (<><span className={c.text}>{llm.display_name}</span> · </>)}
+                                        {fileTimeAgo(f.created_at)}
+                                    </div>
+                                </div>
+                                <a
+                                    href={f.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded-lg border border-[var(--color-line)] px-3 py-1 text-[11px] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
+                                >
+                                    Open ↗
+                                </a>
+                            </div>
+                        )
+                    })
+                )}
+            </div>
+        </section>
+    )
+
     return (
         <div className="relative flex h-full w-full flex-col bg-[var(--color-canvas)]">
             {/* Modals */}
@@ -755,37 +929,59 @@ function Chat({ chatId }) {
 
             {/* Mobile tab toggle */}
             <div className="flex border-b border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:hidden">
-                <TabBtn active={mobileTab === 'team'} onClick={() => setMobileTab('team')}>
-                    Team chat
-                </TabBtn>
-                <TabBtn active={mobileTab === 'models'} onClick={() => setMobileTab('models')}>
-                    Workspace
-                    {Object.keys(pendingLLMs).length > 0 && (
-                        <span className="ml-1.5 inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" />
-                    )}
-                </TabBtn>
+                {openPanels.team && (
+                    <TabBtn active={mobileTab === 'team'} onClick={() => setMobileTab('team')}>
+                        Team chat
+                    </TabBtn>
+                )}
+                {openPanels.models && (
+                    <TabBtn active={mobileTab === 'models'} onClick={() => setMobileTab('models')}>
+                        Workspace
+                        {Object.keys(pendingLLMs).length > 0 && (
+                            <span className="ml-1.5 inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" />
+                        )}
+                    </TabBtn>
+                )}
+                {openPanels.files && (
+                    <TabBtn active={mobileTab === 'files'} onClick={() => setMobileTab('files')}>
+                        Files
+                    </TabBtn>
+                )}
             </div>
 
-            {/* Two-pane layout */}
-            <div
-                ref={splitRef}
-                className="flex min-h-0 flex-1 flex-col md:flex-row"
-                style={{ '--team-w': `${teamWidthPct}%`, '--models-w': `${100 - teamWidthPct}%` }}
-            >
-                <div className={`min-h-0 w-full flex-1 md:flex md:w-[var(--team-w)] md:flex-none ${mobileTab === 'team' ? 'flex' : 'hidden md:flex'}`}>
-                    {teamPane}
-                </div>
-                <div
-                    onMouseDown={handleSplitDragStart}
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Resize panes"
-                    className={`hidden md:block w-1 shrink-0 cursor-col-resize transition-colors ${isResizing ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-line-soft)] hover:bg-[var(--color-fg-subtle)]'}`}
-                />
-                <div className={`min-h-0 w-full flex-1 md:flex md:w-[var(--models-w)] md:flex-none ${mobileTab === 'models' ? 'flex' : 'hidden md:flex'}`}>
-                    {modelsPane}
-                </div>
-            </div>
+            {/* Multi-pane layout */}
+            {(() => {
+                const panels = []
+                if (openPanels.team) panels.push({ key: 'team', node: teamPane })
+                if (openPanels.models) panels.push({ key: 'models', node: modelsPane })
+                if (openPanels.files) panels.push({ key: 'files', node: filesPane })
+
+                return (
+                    <div ref={splitRef} className="flex min-h-0 flex-1 flex-col md:flex-row">
+                        {panels.map((p, i) => (
+                            <Fragment key={p.key}>
+                                <div
+                                    className={`min-h-0 w-full flex-1 md:flex md:w-[var(--panel-w)] md:flex-none ${mobileTab === p.key ? 'flex' : 'hidden md:flex'}`}
+                                    style={{ '--panel-w': `${panelWidths[p.key]}%` }}
+                                >
+                                    {p.node}
+                                </div>
+                                {i < panels.length - 1 && (
+                                    <div
+                                        onMouseDown={handleSplitDragStart(i)}
+                                        role="separator"
+                                        aria-orientation="vertical"
+                                        aria-label="Resize panes"
+                                        className={`hidden md:block w-1 shrink-0 cursor-col-resize transition-colors ${
+                                            isResizing ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-line-soft)] hover:bg-[var(--color-fg-subtle)]'
+                                        }`}
+                                    />
+                                )}
+                            </Fragment>
+                        ))}
+                    </div>
+                )
+            })()}
         </div>
     )
 }
@@ -889,6 +1085,65 @@ function UserPlusIcon() {
             <line x1="23" y1="11" x2="17" y2="11" />
         </svg>
     )
+}
+function PeopleIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+    )
+}
+function FileIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+        </svg>
+    )
+}
+function PanelToggleBtn({ children, active, onClick, label }) {
+    return (
+        <button
+            onClick={onClick}
+            title={`${active ? "Hide" : "Show"} ${label}`}
+            aria-label={`${active ? "Hide" : "Show"} ${label}`}
+            aria-pressed={active}
+            className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                active
+                    ? "bg-[var(--color-surface-3)] text-[var(--color-fg)]"
+                    : "text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-muted)]"
+            }`}
+        >
+            {children}
+        </button>
+    )
+}
+function EmptyFiles() {
+    return (
+        <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-fg-subtle)]">
+                <FileIcon />
+            </span>
+            <p className="mt-3 text-sm text-[var(--color-fg-muted)]">No files yet</p>
+            <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
+                Files generated by tools (PDFs, slides, etc.) will appear here.
+            </p>
+        </div>
+    )
+}
+function fileTimeAgo(iso) {
+    if (!iso) return ""
+    const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+    if (seconds < 60) return "just now"
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
 }
 function ChatIcon() {
     return (

@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import LiveDemo from './LiveDemo'
+import TryItDemo from './TryItDemo'
 import Pricing from './Pricing'
 
 function Hero() {
@@ -145,6 +146,9 @@ function Hero() {
 
       {/* Live demo (animated) */}
       <LiveDemo />
+
+      {/* Interactive playground */}
+      <TryItDemo />
 
       {/* Pricing */}
       <Pricing />
