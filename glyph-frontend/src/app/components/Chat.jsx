@@ -3,6 +3,7 @@ import Message from "./Message"
 import AIMessage from "./AIMessage"
 import InviteLLM from "./InviteLLM"
 import LLMContext from "./LLMContext"
+import UserContext from "./UserContext"
 import InviteUser from "./InviteUser"
 import { supabase, API_BASE } from "../../services/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -17,6 +18,7 @@ function Chat({ chatId }) {
     const [showMentionDropdown, setShowMentionDropdown] = useState(false)
     const [mentionFilter, setMentionFilter] = useState("")
     const [contextLLM, setContextLLM] = useState(null)
+    const [contextUser, setContextUser] = useState(null)
     const [showInviteUser, setShowInviteUser] = useState(false)
     const [profilesById, setProfilesById] = useState({})
     const [loading, setLoading] = useState(true)
@@ -63,14 +65,17 @@ function Chat({ chatId }) {
 
             const { data: participants } = await supabase
                 .from("chat_participants")
-                .select("user_id")
+                .select("user_id, role")
                 .eq("chat_id", chatId)
             if (participants?.length) {
                 const { data: profiles } = await supabase
                     .from("profiles")
                     .select("id, first_name")
                     .in("id", participants.map(p => p.user_id))
-                if (profiles) setProfilesById(Object.fromEntries(profiles.map(p => [p.id, p])))
+                if (profiles) {
+                    const roleByUserId = Object.fromEntries(participants.map(p => [p.user_id, p.role]))
+                    setProfilesById(Object.fromEntries(profiles.map(p => [p.id, { ...p, role: roleByUserId[p.id] }])))
+                }
             }
 
             setLoading(false)
@@ -464,28 +469,62 @@ function Chat({ chatId }) {
                         <span>{invitedLLMs.length} {invitedLLMs.length === 1 ? 'model' : 'models'}</span>
                     </div>
                 </div>
-                {invitedLLMs.length > 0 && (
-                    <div className="ml-3 hidden items-center -space-x-1.5 md:flex">
-                        {invitedLLMs.slice(0, 5).map(llm => {
-                            const c = getLLMColor(llm.display_number)
-                            return (
-                                <button
-                                    key={llm.id}
-                                    onClick={() => openContext(llm.id)}
-                                    title={`${llm.display_name} · ${modelTypeLabel(llm.model_type)}`}
-                                    className={`flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-[var(--color-surface-1)] ${c.avatarBg} ${c.avatarText} text-[10px] font-semibold hover:z-10 hover:scale-110 transition-transform`}
-                                >
-                                    {getLLMInitials(llm.display_name)}
-                                </button>
-                            )
-                        })}
-                        {invitedLLMs.length > 5 && (
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-[var(--color-surface-1)] bg-[var(--color-surface-3)] text-[10px] text-[var(--color-fg-muted)]">
-                                +{invitedLLMs.length - 5}
-                            </span>
-                        )}
-                    </div>
-                )}
+                <div className="ml-3 hidden items-center gap-2 md:flex">
+                    {Object.keys(profilesById).length > 0 && (
+                        <div className="flex items-center -space-x-1.5">
+                            {Object.values(profilesById).slice(0, 5).map(p => {
+                                const isMe = p.id === user?.id
+                                const initial = (p.first_name?.[0] || 'U').toUpperCase()
+                                return (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => setContextUser(p)}
+                                        title={`${p.first_name || 'User'}${isMe ? ' (you)' : ''}`}
+                                        className={`flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-[var(--color-surface-1)] text-[10px] font-semibold hover:z-10 hover:scale-110 transition-transform ${
+                                            isMe
+                                                ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black'
+                                                : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'
+                                        }`}
+                                    >
+                                        {initial}
+                                    </button>
+                                )
+                            })}
+                            {Object.keys(profilesById).length > 5 && (
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-[var(--color-surface-1)] bg-[var(--color-surface-3)] text-[10px] text-[var(--color-fg-muted)]">
+                                    +{Object.keys(profilesById).length - 5}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {Object.keys(profilesById).length > 0 && invitedLLMs.length > 0 && (
+                        <span className="h-6 w-px bg-[var(--color-line-soft)]" aria-hidden="true" />
+                    )}
+
+                    {invitedLLMs.length > 0 && (
+                        <div className="flex items-center -space-x-1.5">
+                            {invitedLLMs.slice(0, 5).map(llm => {
+                                const c = getLLMColor(llm.display_number)
+                                return (
+                                    <button
+                                        key={llm.id}
+                                        onClick={() => openContext(llm.id)}
+                                        title={`${llm.display_name} · ${modelTypeLabel(llm.model_type)}`}
+                                        className={`flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-[var(--color-surface-1)] ${c.avatarBg} ${c.avatarText} text-[10px] font-semibold hover:z-10 hover:scale-110 transition-transform`}
+                                    >
+                                        {getLLMInitials(llm.display_name)}
+                                    </button>
+                                )
+                            })}
+                            {invitedLLMs.length > 5 && (
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-[var(--color-surface-1)] bg-[var(--color-surface-3)] text-[10px] text-[var(--color-fg-muted)]">
+                                    +{invitedLLMs.length - 5}
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="flex items-center gap-1">
@@ -661,8 +700,15 @@ function Chat({ chatId }) {
                 <LLMContext
                     llm={contextLLM}
                     messages={messages}
-                    invitedLLMs={invitedLLMs}
                     onClose={() => setContextLLM(null)}
+                />
+            )}
+            {contextUser && (
+                <UserContext
+                    profile={contextUser}
+                    isMe={contextUser.id === user?.id}
+                    messages={messages}
+                    onClose={() => setContextUser(null)}
                 />
             )}
 

@@ -1,6 +1,6 @@
 import { getLLMColor, getLLMInitials, modelTypeLabel } from "../utils/llmColors"
 
-function LLMContext({ llm, messages, invitedLLMs, onClose }) {
+function LLMContext({ llm, messages, onClose }) {
     const c = getLLMColor(llm.display_number)
 
     const connections = llm.llm_connections || []
@@ -74,46 +74,6 @@ function LLMContext({ llm, messages, invitedLLMs, onClose }) {
                 </div>
 
                 <div className="space-y-5 px-5 py-5">
-                    {/* System prompt */}
-                    <Section label="System prompt">
-                        <div className="rounded-lg border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] p-3 text-sm leading-relaxed text-[var(--color-fg)]">
-                            {llm.model_instruct?.trim() || (
-                                <span className="italic text-[var(--color-fg-subtle)]">No instructions set.</span>
-                            )}
-                        </div>
-                    </Section>
-
-                    {/* Connections */}
-                    <Section label="Connected to">
-                        {connections.length === 0 ? (
-                            <p className="text-xs text-[var(--color-fg-subtle)]">No connections — this model can't read anyone.</p>
-                        ) : (
-                            <div className="flex flex-wrap gap-2">
-                                {connections.map(conn => {
-                                    if (conn.target_type === 'user') {
-                                        return (
-                                            <span key="user" className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-3 py-1 text-xs">
-                                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-sky-400 text-[9px] font-semibold text-black">U</span>
-                                                Teammates
-                                            </span>
-                                        )
-                                    }
-                                    const connLLM = invitedLLMs.find(l => l.id === conn.target_llm_id)
-                                    if (!connLLM) return null
-                                    const cc = getLLMColor(connLLM.display_number)
-                                    return (
-                                        <span key={conn.id} className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-3 py-1 text-xs">
-                                            <span className={`flex h-5 w-5 items-center justify-center rounded-full ${cc.avatarBg} text-[9px] font-semibold ${cc.avatarText}`}>
-                                                {getLLMInitials(connLLM.display_name)}
-                                            </span>
-                                            {connLLM.display_name}
-                                        </span>
-                                    )
-                                })}
-                            </div>
-                        )}
-                    </Section>
-
                     {/* Visible messages */}
                     <Section label={`Visible messages (${relevantMessages.length})`}>
                         <div className="lp-scroll max-h-56 space-y-2 overflow-y-auto pr-1">
