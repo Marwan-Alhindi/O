@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import LiveDemo from './LiveDemo'
+import Pricing from './Pricing'
 
 function Hero() {
   const navigate = useNavigate()
@@ -144,6 +145,9 @@ function Hero() {
 
       {/* Live demo (animated) */}
       <LiveDemo />
+
+      {/* Pricing */}
+      <Pricing />
 
       {/* CTA strip */}
       <div className="mt-24">
