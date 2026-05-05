@@ -5,9 +5,23 @@ import InviteLLM from "./InviteLLM"
 import LLMContext from "./LLMContext"
 import UserContext from "./UserContext"
 import InviteUser from "./InviteUser"
+import Calendar, { toDateKey } from "./Calendar"
+import DailyNote from "./DailyNote"
 import { supabase, API_BASE } from "../../services/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { getLLMColor, getLLMInitials, modelTypeLabel } from "../utils/llmColors"
+
+const GROUP_KEYS = {
+    chat: ['team', 'models', 'files'],
+    planner: ['calendar', 'daily'],
+}
+const PANEL_LABELS = {
+    team: 'Team chat',
+    models: 'Workspace',
+    files: 'Files',
+    calendar: 'Calendar',
+    daily: 'Daily note',
+}
 
 function Chat({ chatId }) {
     const [chatName, setChatName] = useState("Chat")
@@ -28,15 +42,21 @@ function Chat({ chatId }) {
         try {
             const saved = JSON.parse(localStorage.getItem("glyph.panelWidths") || "null")
             if (saved && typeof saved === "object") {
-                return { team: saved.team ?? 47, models: saved.models ?? 53, files: saved.files ?? 0 }
+                return {
+                    team: saved.team ?? 47,
+                    models: saved.models ?? 53,
+                    files: saved.files ?? 0,
+                    calendar: saved.calendar ?? 35,
+                    daily: saved.daily ?? 65,
+                }
             }
             // Migrate from the older two-pane key
             const oldTeamPct = parseFloat(localStorage.getItem("glyph.teamWidthPct"))
             if (Number.isFinite(oldTeamPct) && oldTeamPct >= 20 && oldTeamPct <= 80) {
-                return { team: oldTeamPct, models: 100 - oldTeamPct, files: 0 }
+                return { team: oldTeamPct, models: 100 - oldTeamPct, files: 0, calendar: 35, daily: 65 }
             }
         } catch {}
-        return { team: 47, models: 53, files: 0 }
+        return { team: 47, models: 53, files: 0, calendar: 35, daily: 65 }
     })
     const [isResizing, setIsResizing] = useState(false)
     const [activeResize, setActiveResize] = useState(null)
@@ -48,11 +68,19 @@ function Chat({ chatId }) {
                     team: saved.team !== false,
                     models: saved.models !== false,
                     files: !!saved.files,
+                    calendar: saved.calendar !== false,
+                    daily: saved.daily !== false,
                 }
             }
         } catch {}
-        return { team: true, models: true, files: false }
+        return { team: true, models: true, files: false, calendar: true, daily: true }
     })
+    const [viewGroup, setViewGroup] = useState(() => {
+        const saved = localStorage.getItem("glyph.viewGroup")
+        return saved === "planner" ? "planner" : "chat"
+    })
+    const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()))
+    const [notes, setNotes] = useState({})
 
     const { user, session } = useAuth()
     const teamScrollRef = useRef(null)
@@ -370,7 +398,7 @@ function Chat({ chatId }) {
     function handleSplitDragStart(dividerIndex) {
         return (e) => {
             e.preventDefault()
-            const visible = ['team', 'models', 'files'].filter(k => openPanels[k])
+            const visible = GROUP_KEYS[viewGroup].filter(k => openPanels[k])
             if (dividerIndex < 0 || dividerIndex >= visible.length - 1) return
             const leftKey = visible[dividerIndex]
             const rightKey = visible[dividerIndex + 1]
@@ -430,7 +458,7 @@ function Chat({ chatId }) {
     // Renormalize visible widths to sum to 100 whenever the visible set changes
     useEffect(() => {
         setPanelWidths(prev => {
-            const visible = ['team', 'models', 'files'].filter(k => openPanels[k])
+            const visible = GROUP_KEYS[viewGroup].filter(k => openPanels[k])
             if (visible.length === 0) return prev
             const next = { ...prev }
             const zeros = visible.filter(k => (prev[k] || 0) === 0)
@@ -456,26 +484,53 @@ function Chat({ chatId }) {
             }
             return prev
         })
-    }, [openPanels])
+    }, [openPanels, viewGroup])
 
     useEffect(() => {
         localStorage.setItem("glyph.openPanels", JSON.stringify(openPanels))
     }, [openPanels])
 
+    useEffect(() => {
+        localStorage.setItem("glyph.viewGroup", viewGroup)
+    }, [viewGroup])
+
+    // Load planner notes for the current user
+    useEffect(() => {
+        if (!user?.id) return
+        try {
+            const raw = localStorage.getItem(`glyph.planner.${user.id}.notes`)
+            setNotes(raw ? JSON.parse(raw) : {})
+        } catch { setNotes({}) }
+    }, [user?.id])
+
+    function updateNote(dateKey, content) {
+        setNotes(prev => {
+            const next = { ...prev }
+            if (!content || content.trim() === "") delete next[dateKey]
+            else next[dateKey] = content
+            if (user?.id) {
+                try { localStorage.setItem(`glyph.planner.${user.id}.notes`, JSON.stringify(next)) } catch {}
+            }
+            return next
+        })
+    }
+
     function togglePanel(name) {
         setOpenPanels(prev => {
             const next = { ...prev, [name]: !prev[name] }
-            if (!next.team && !next.models && !next.files) return prev
+            const stillVisible = GROUP_KEYS[viewGroup].some(k => next[k])
+            if (!stillVisible) return prev
             return next
         })
     }
 
     useEffect(() => {
-        if (!openPanels[mobileTab]) {
-            const first = ['team', 'models', 'files'].find(k => openPanels[k])
+        const groupKeys = GROUP_KEYS[viewGroup]
+        if (!groupKeys.includes(mobileTab) || !openPanels[mobileTab]) {
+            const first = groupKeys.find(k => openPanels[k])
             if (first) setMobileTab(first)
         }
-    }, [openPanels, mobileTab])
+    }, [openPanels, mobileTab, viewGroup])
 
     const filteredLLMs = invitedLLMs.filter(llm =>
         llm.display_name.toLowerCase().startsWith(mentionFilter.toLowerCase())
@@ -680,14 +735,29 @@ function Chat({ chatId }) {
 
             <div className="flex items-center gap-2">
                 <div className="hidden items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 md:flex">
-                    <PanelToggleBtn active={openPanels.team} onClick={() => togglePanel('team')} label="Team chat"><PeopleIcon /></PanelToggleBtn>
-                    <PanelToggleBtn active={openPanels.models} onClick={() => togglePanel('models')} label="Workspace"><BotIcon /></PanelToggleBtn>
-                    <PanelToggleBtn active={openPanels.files} onClick={() => togglePanel('files')} label="Files"><FileIcon /></PanelToggleBtn>
+                    <GroupBtn active={viewGroup === 'chat'} onClick={() => setViewGroup('chat')} icon={<ChatBubbleIcon />}>Chat</GroupBtn>
+                    <GroupBtn active={viewGroup === 'planner'} onClick={() => setViewGroup('planner')} icon={<CalendarIcon />}>Planner</GroupBtn>
                 </div>
-                <div className="flex items-center gap-1">
-                    <IconBtn label="Invite model" onClick={() => setInviteLLMpop(true)}><BotIcon /></IconBtn>
-                    <IconBtn label="Invite teammate" onClick={() => setShowInviteUser(true)}><UserPlusIcon /></IconBtn>
+                <div className="hidden items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 md:flex">
+                    {viewGroup === 'chat' ? (
+                        <>
+                            <PanelToggleBtn active={openPanels.team} onClick={() => togglePanel('team')} label="Team chat"><PeopleIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.models} onClick={() => togglePanel('models')} label="Workspace"><BotIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.files} onClick={() => togglePanel('files')} label="Files"><FileIcon /></PanelToggleBtn>
+                        </>
+                    ) : (
+                        <>
+                            <PanelToggleBtn active={openPanels.calendar} onClick={() => togglePanel('calendar')} label="Calendar"><CalendarIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.daily} onClick={() => togglePanel('daily')} label="Daily note"><NoteIcon /></PanelToggleBtn>
+                        </>
+                    )}
                 </div>
+                {viewGroup === 'chat' && (
+                    <div className="flex items-center gap-1">
+                        <IconBtn label="Invite model" onClick={() => setInviteLLMpop(true)}><BotIcon /></IconBtn>
+                        <IconBtn label="Invite teammate" onClick={() => setShowInviteUser(true)}><UserPlusIcon /></IconBtn>
+                    </div>
+                )}
             </div>
         </div>
     )
@@ -847,6 +917,23 @@ function Chat({ chatId }) {
         </section>
     )
 
+    /* ---------- Planner panes ---------- */
+    const calendarPane = (
+        <Calendar
+            selectedKey={selectedDate}
+            onSelect={setSelectedDate}
+            hasNote={(key) => !!notes[key] && notes[key].trim() !== ""}
+        />
+    )
+
+    const dailyPane = (
+        <DailyNote
+            dateKey={selectedDate}
+            value={notes[selectedDate] || ""}
+            onChange={updateNote}
+        />
+    )
+
     /* ---------- Files pane ---------- */
     const filesPane = (
         <section className="flex min-h-0 flex-1 flex-col border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:border-l">
@@ -927,34 +1014,36 @@ function Chat({ chatId }) {
 
             {topBar}
 
-            {/* Mobile tab toggle */}
-            <div className="flex border-b border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:hidden">
-                {openPanels.team && (
-                    <TabBtn active={mobileTab === 'team'} onClick={() => setMobileTab('team')}>
-                        Team chat
-                    </TabBtn>
-                )}
-                {openPanels.models && (
-                    <TabBtn active={mobileTab === 'models'} onClick={() => setMobileTab('models')}>
-                        Workspace
-                        {Object.keys(pendingLLMs).length > 0 && (
-                            <span className="ml-1.5 inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" />
-                        )}
-                    </TabBtn>
-                )}
-                {openPanels.files && (
-                    <TabBtn active={mobileTab === 'files'} onClick={() => setMobileTab('files')}>
-                        Files
-                    </TabBtn>
-                )}
+            {/* Mobile group + tab toggle */}
+            <div className="flex items-center border-b border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:hidden">
+                <div className="flex items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 m-2">
+                    <GroupBtn active={viewGroup === 'chat'} onClick={() => setViewGroup('chat')} icon={<ChatBubbleIcon />}>Chat</GroupBtn>
+                    <GroupBtn active={viewGroup === 'planner'} onClick={() => setViewGroup('planner')} icon={<CalendarIcon />}>Planner</GroupBtn>
+                </div>
+                <div className="flex flex-1">
+                    {GROUP_KEYS[viewGroup].filter(k => openPanels[k]).map(k => (
+                        <TabBtn key={k} active={mobileTab === k} onClick={() => setMobileTab(k)}>
+                            {PANEL_LABELS[k]}
+                            {k === 'models' && Object.keys(pendingLLMs).length > 0 && (
+                                <span className="ml-1.5 inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" />
+                            )}
+                        </TabBtn>
+                    ))}
+                </div>
             </div>
 
             {/* Multi-pane layout */}
             {(() => {
-                const panels = []
-                if (openPanels.team) panels.push({ key: 'team', node: teamPane })
-                if (openPanels.models) panels.push({ key: 'models', node: modelsPane })
-                if (openPanels.files) panels.push({ key: 'files', node: filesPane })
+                const paneNodes = {
+                    team: teamPane,
+                    models: modelsPane,
+                    files: filesPane,
+                    calendar: calendarPane,
+                    daily: dailyPane,
+                }
+                const panels = GROUP_KEYS[viewGroup]
+                    .filter(k => openPanels[k])
+                    .map(k => ({ key: k, node: paneNodes[k] }))
 
                 return (
                     <div ref={splitRef} className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -1101,6 +1190,47 @@ function FileIcon() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
+        </svg>
+    )
+}
+function GroupBtn({ children, icon, active, onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            aria-pressed={active}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                active
+                    ? "bg-[var(--color-surface-3)] text-[var(--color-fg)]"
+                    : "text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-muted)]"
+            }`}
+        >
+            {icon}
+            {children}
+        </button>
+    )
+}
+function CalendarIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+    )
+}
+function NoteIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </svg>
+    )
+}
+function ChatBubbleIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
     )
 }
