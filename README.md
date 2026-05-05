@@ -12,6 +12,9 @@
     <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.135-009688?logo=fastapi&logoColor=white" />
     <img alt="Supabase" src="https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white" />
     <img alt="OpenAI" src="https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white" />
+    <img alt="LangChain" src="https://img.shields.io/badge/LangChain-1C3C3C?logo=langchain&logoColor=white" />
+    <img alt="LangGraph" src="https://img.shields.io/badge/LangGraph-FF6B6B?logoColor=white" />
+    <img alt="LangSmith" src="https://img.shields.io/badge/LangSmith-7C3AED?logoColor=white" />
   </p>
 </div>
 
@@ -20,7 +23,7 @@
 Glyph is a chat workspace where humans and multiple LLMs work together in the same room. Mention any model with `@`, invite teammates, and let the agents call tools — web search, PDF generation, and inviting other LLMs into the conversation.
 
 > [!NOTE]
-> Glyph is in active development. Auth and realtime are powered by Supabase; the backend orchestrates LLM tool calls via FastAPI.
+> Glyph is in active development. Auth and realtime are powered by Supabase; the backend orchestrates LLM agents and tool calls via FastAPI + **LangChain** and **LangGraph**, with **LangSmith** handling tracing and evals.
 
 ## Quickstart
 
@@ -48,12 +51,12 @@ npm run dev
 ## Repos
 
 - **[`glyph-frontend/`](glyph-frontend/)** — React 19 + Vite + Tailwind v4 client. Auth, realtime chat, marketing site.
-- **[`glyph-backend/`](glyph-backend/)** — FastAPI server. LLM orchestration, tool calls (web search, PDF generation, mention/invite LLM), Supabase auth verification.
+- **[`glyph-backend/`](glyph-backend/)** — FastAPI server. LangChain + LangGraph agent orchestration, tool calls (web search, PDF generation, mention/invite LLM), LangSmith tracing/evals, Supabase auth verification.
 
 ## Features
 
 - **Multi-LLM chat** — `@mention` any configured model in the same conversation.
-- **Tool-using agents** — LLMs can call `web_search`, `create_pdf`, `mention_llm`, and `invite_llm` mid-response.
+- **Tool-using agents** — LangGraph-driven agents call `web_search`, `create_pdf`, `mention_llm`, and `invite_llm` mid-response, with LangChain wiring up the LLM/tool layer and LangSmith capturing every run for tracing and evaluation.
 - **Per-LLM accent palette** — each model gets a distinct color so threads stay visually parseable.
 - **Realtime** — Supabase realtime pushes new messages to every participant instantly.
 - **Auth + protected routes** — Supabase auth, `ProtectedRoute` wrapper, server-side JWT verification.
