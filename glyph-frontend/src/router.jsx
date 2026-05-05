@@ -13,6 +13,7 @@ import AppLayout from './app/AppLayout'
 import Login from './marketing/pages/Login'
 import Landing from './marketing/pages/Landing'
 import Getstarted from './marketing/pages/Getstarted'
+import AuthCallback from './marketing/pages/AuthCallback'
 
 // App Pages
 import ChatPage from './app/pages/ChatPage'
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
           { path: '', element: <Landing /> },
           { path: 'login', element: <Login /> },
           { path: 'getstarted', element: <Getstarted /> },
+          { path: 'auth/callback', element: <AuthCallback /> },
           { path: 'invite/:token', element: <AcceptInvite /> }
         ]
       },

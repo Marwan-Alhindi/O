@@ -253,6 +253,57 @@ def revoke_invitation(invitation_id: str, authorization: str = Header()):
     return {"ok": True}
 
 
+@router.post("/invitations/claim_pending")
+def claim_pending_invitations(authorization: str = Header()):
+    """Find every pending invitation for the current user's email and accept them.
+
+    Called after login/signup so users who created their account *after* being
+    invited (or who first logged in with a different account) still land in the
+    chats they were invited to, without having to re-click the email link.
+    """
+    user_id = _auth(authorization)
+    user_email = get_user_email(user_id)
+    sb = _supabase()
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    pending = (
+        sb.table("chat_invitations")
+        .select("*")
+        .eq("email", user_email)
+        .is_("accepted_at", "null")
+        .is_("revoked_at", "null")
+        .gt("expires_at", now_iso)
+        .execute()
+    )
+    rows = pending.data or []
+
+    joined_chat_ids: list[str] = []
+    for inv in rows:
+        chat_id = inv["chat_id"]
+        existing = (
+            sb.table("chat_participants")
+            .select("id")
+            .eq("chat_id", chat_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        if not existing.data:
+            sb.table("chat_participants").insert({
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "role": "member",
+            }).execute()
+            joined_chat_ids.append(chat_id)
+        sb.table("chat_invitations").update({
+            "accepted_at": now_iso,
+            "accepted_by": user_id,
+        }).eq("id", inv["id"]).execute()
+
+    return {"joined_chat_ids": joined_chat_ids}
+
+
 @router.post("/invitations/accept")
 def accept_invitation(body: AcceptInvitationRequest, authorization: str = Header()):
     user_id = _auth(authorization)

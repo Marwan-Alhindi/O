@@ -29,11 +29,14 @@ export function AuthProvider({ children }) {
         return data
     }
 
-    async function register(email, firstName, lastName, password) {
+    async function register(email, firstName, lastName, password, { next } = {}) {
+        const callback = `${window.location.origin}/auth/callback`
+        const emailRedirectTo = next ? `${callback}?next=${encodeURIComponent(next)}` : callback
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
+                emailRedirectTo,
                 data: {
                     first_name: firstName,
                     last_name: lastName
@@ -44,13 +47,24 @@ export function AuthProvider({ children }) {
         return data
     }
 
+    async function resendVerification(email, { next } = {}) {
+        const callback = `${window.location.origin}/auth/callback`
+        const emailRedirectTo = next ? `${callback}?next=${encodeURIComponent(next)}` : callback
+        const { error } = await supabase.auth.resend({
+            type: 'signup',
+            email,
+            options: { emailRedirectTo },
+        })
+        if (error) throw error
+    }
+
     async function logout() {
         const { error } = await supabase.auth.signOut()
         if (error) throw error
     }
 
     return (
-        <AuthContext.Provider value={{ user, session, loading, login, register, logout }}>
+        <AuthContext.Provider value={{ user, session, loading, login, register, resendVerification, logout }}>
             {children}
         </AuthContext.Provider>
     )

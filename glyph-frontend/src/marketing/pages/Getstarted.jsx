@@ -7,7 +7,7 @@ function Getstarted() {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const inviteToken = searchParams.get("invite")
-    const { register } = useAuth()
+    const { register, resendVerification } = useAuth()
     const [email, setEmail] = useState("")
     const [firstName, setFirstName] = useState("")
     const [lastName, setLastName] = useState("")
@@ -16,6 +16,10 @@ function Getstarted() {
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
     const [invitePreview, setInvitePreview] = useState(null)
+    const [pendingVerification, setPendingVerification] = useState(null) // email string when waiting on email verification
+    const [resending, setResending] = useState(false)
+    const [resendNotice, setResendNotice] = useState("")
+    const [emailAlreadyExists, setEmailAlreadyExists] = useState(false)
 
     useEffect(() => {
         if (!inviteToken) return
@@ -42,13 +46,135 @@ function Getstarted() {
 
         setLoading(true)
         try {
-            await register(email, firstName, lastName, password)
-            navigate(inviteToken ? `/invite/${inviteToken}` : '/app')
+            const next = inviteToken ? `/invite/${inviteToken}` : '/app'
+            const data = await register(email, firstName, lastName, password, { next })
+            // Supabase signUp with an email that already has a confirmed account
+            // returns a "fake" user with `identities: []` — to prevent enumeration.
+            // No verification email is sent, no account is created. Detect that
+            // here so we can tell the user to log in instead.
+            if (Array.isArray(data?.user?.identities) && data.user.identities.length === 0) {
+                setEmailAlreadyExists(true)
+                return
+            }
+            // If email confirmation is enabled in Supabase, signUp returns a user
+            // but no session — the user must click the verification email first.
+            if (data?.session) {
+                navigate(next)
+            } else {
+                setPendingVerification(email)
+            }
         } catch (err) {
-            setError(err.message)
+            // Some Supabase configs error directly with "User already registered"
+            // when email confirmation is off and the email exists.
+            const msg = (err?.message || "").toLowerCase()
+            if (msg.includes("already registered") || msg.includes("user already exists")) {
+                setEmailAlreadyExists(true)
+            } else {
+                setError(err.message)
+            }
         } finally {
             setLoading(false)
         }
+    }
+
+    async function handleResend() {
+        if (!pendingVerification) return
+        setResending(true)
+        setResendNotice("")
+        try {
+            const next = inviteToken ? `/invite/${inviteToken}` : '/app'
+            await resendVerification(pendingVerification, { next })
+            setResendNotice("Verification email sent again.")
+        } catch (err) {
+            setResendNotice(err.message || "Could not resend verification.")
+        } finally {
+            setResending(false)
+        }
+    }
+
+    if (emailAlreadyExists) {
+        const loginPath = inviteToken ? `/login?invite=${inviteToken}` : '/login'
+        return (
+            <div className="flex min-h-[calc(100vh-72px)] items-center justify-center px-6 py-12">
+                <div className="w-full max-w-md">
+                    <div className="mb-6 flex flex-col items-center text-center">
+                        <img src="/logo-white.png" width={36} height={36} alt="" />
+                    </div>
+                    <div className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-1)]/70 p-7 text-center backdrop-blur-md">
+                        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/15 text-amber-300">
+                            <UserCheckIcon />
+                        </div>
+                        <h1 className="text-xl font-semibold tracking-tight">Account already exists</h1>
+                        <p className="text-sm text-[var(--color-fg-muted)]">
+                            An account with{' '}
+                            <strong className="text-[var(--color-fg)]">{email}</strong>{' '}
+                            already exists. Log in instead{invitePreview ? ` and we'll add you to ${invitePreview.chat_name}` : ''}.
+                        </p>
+                        <div className="flex flex-col gap-2 pt-2">
+                            <button
+                                onClick={() => navigate(loginPath)}
+                                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-[var(--color-brand)]"
+                            >
+                                Go to log in
+                            </button>
+                            <button
+                                onClick={() => setEmailAlreadyExists(false)}
+                                className="rounded-lg px-4 py-2 text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
+                            >
+                                Use a different email
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    if (pendingVerification) {
+        return (
+            <div className="flex min-h-[calc(100vh-72px)] items-center justify-center px-6 py-12">
+                <div className="w-full max-w-md">
+                    <div className="mb-6 flex flex-col items-center text-center">
+                        <img src="/logo-white.png" width={36} height={36} alt="" />
+                    </div>
+                    <div className="space-y-4 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-1)]/70 p-7 text-center backdrop-blur-md">
+                        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+                            <MailIcon />
+                        </div>
+                        <h1 className="text-xl font-semibold tracking-tight">Check your email</h1>
+                        <p className="text-sm text-[var(--color-fg-muted)]">
+                            We sent a verification link to{' '}
+                            <strong className="text-[var(--color-fg)]">{pendingVerification}</strong>.
+                            Click it to finish creating your account
+                            {invitePreview ? ` and join ${invitePreview.chat_name}.` : '.'}
+                        </p>
+                        <p className="text-xs text-[var(--color-fg-subtle)]">
+                            Didn't see it? Check your spam folder, or resend below.
+                        </p>
+                        {resendNotice && (
+                            <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-fg-muted)]">
+                                {resendNotice}
+                            </div>
+                        )}
+                        <div className="flex flex-col gap-2 pt-2">
+                            <button
+                                onClick={handleResend}
+                                disabled={resending}
+                                className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-2 text-sm text-[var(--color-fg)] hover:border-[var(--color-fg-subtle)] disabled:opacity-60"
+                            >
+                                {resending ? 'Sending…' : 'Resend verification email'}
+                            </button>
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="rounded-lg px-4 py-2 text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
+                            >
+                                Back to log in
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )
     }
 
     return (
@@ -157,6 +283,25 @@ function Field({ label, type, placeholder, value, onChange, readOnly = false }) 
                 className={`w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-2.5 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)] outline-none transition-colors focus:border-[var(--color-fg-subtle)] focus:ring-2 focus:ring-white/10 ${readOnly ? 'cursor-not-allowed opacity-70' : ''}`}
             />
         </label>
+    )
+}
+
+function MailIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+            <polyline points="22,6 12,13 2,6" />
+        </svg>
+    )
+}
+
+function UserCheckIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <polyline points="17 11 19 13 23 9" />
+        </svg>
     )
 }
 

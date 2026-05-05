@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Outlet, useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
-import { supabase } from "../services/supabase"
+import { supabase, apiFetch } from "../services/supabase"
 
 function AppLayout() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -24,6 +24,27 @@ function AppLayout() {
     const avatarLetter = firstName[0]?.toUpperCase() || 'U'
 
     useEffect(() => { fetchChats() }, [user])
+
+    // After login/signup, claim any pending invitations addressed to the
+    // user's email. Covers users who created their account *after* being
+    // invited (or who first logged in with a different account and then made
+    // a new one). Idempotent on the backend.
+    useEffect(() => {
+        if (!user?.id) return
+        let cancelled = false
+        apiFetch('/invitations/claim_pending', { method: 'POST' })
+            .then(({ joined_chat_ids } = {}) => {
+                if (cancelled || !joined_chat_ids?.length) return
+                fetchChats()
+                if (location.pathname === '/app' || location.pathname === '/app/') {
+                    navigate(`/app/chat/${joined_chat_ids[0]}`)
+                }
+            })
+            .catch(() => { /* best-effort */ })
+        return () => { cancelled = true }
+    // Run once per user session — location/navigate don't need to retrigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id])
 
     useEffect(() => {
         function onClick(e) {
