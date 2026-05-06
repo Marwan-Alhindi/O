@@ -79,6 +79,7 @@ def ask_llm(body: AskLLMRequest, authorization: str = Header()):
             body.llm_id,
             user_id,
             replace_message_id=body.replace_message_id,
+            side_message_id=body.side_message_id,
         ),
         media_type="text/event-stream",
         headers={

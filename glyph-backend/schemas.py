@@ -14,6 +14,7 @@ class InviteLLMRequest(BaseModel):
 class AskLLMRequest(BaseModel):
     chat_id: str
     llm_id: str
+    side_message_id: str | None = None
     # When set, the agent regenerates the existing message in place: context
     # is truncated to messages strictly BEFORE this id, and the final answer
     # is UPDATEd onto this row instead of inserted as a new one.

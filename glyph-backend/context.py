@@ -17,6 +17,7 @@ def build_context_messages(
     llm_id: str,
     system_prompt: str,
     up_to_message_id: str | None = None,
+    include_message_id: str | None = None,
 ) -> list[BaseMessage]:
     """Return the conversation history as LangChain messages.
 
@@ -65,6 +66,8 @@ def build_context_messages(
         # tombstone to humans, but the model should regenerate as if the
         # message never existed.
         if msg.get("deleted_at"):
+            continue
+        if msg.get("included_in_context") is False and msg.get("id") != include_message_id:
             continue
         if msg["sender_type"] == "llm" and msg["sender_llm_id"] == llm_id:
             messages.append(AIMessage(content=msg["content"]))

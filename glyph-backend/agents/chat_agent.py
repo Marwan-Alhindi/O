@@ -48,6 +48,7 @@ async def run_agent_stream(
     llm_id: str,
     user_id: str,
     replace_message_id: str | None = None,
+    side_message_id: str | None = None,
 ):
     """Async generator yielding SSE events as the agent runs.
 
@@ -72,6 +73,7 @@ async def run_agent_stream(
         llm_id,
         llm.get("model_instruct") or "",
         up_to_message_id=replace_message_id,
+        include_message_id=side_message_id,
     )
 
     final_messages = None
@@ -141,6 +143,7 @@ async def run_agent_stream(
             "sender_type": "llm",
             "sender_llm_id": llm_id,
             "content": final_text,
+            "included_in_context": side_message_id is None,
         }).execute()
         msg_id = insert_result.data[0]["id"] if insert_result.data else None
 

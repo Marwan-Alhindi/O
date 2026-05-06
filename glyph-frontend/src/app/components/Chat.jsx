@@ -59,6 +59,9 @@ function Chat({ chatId }) {
     const [mentionFilter, setMentionFilter] = useState("")
     const [stickyMention, setStickyMention] = useState(null)
     const [stickyMentionLoadedKey, setStickyMentionLoadedKey] = useState(null)
+    const [showFeatureTray, setShowFeatureTray] = useState(false)
+    const [showFeatureMore, setShowFeatureMore] = useState(false)
+    const [sideAskActive, setSideAskActive] = useState(false)
     const [showStickyTargetDropdown, setShowStickyTargetDropdown] = useState(false)
     const [contextLLM, setContextLLM] = useState(null)
     const [contextUser, setContextUser] = useState(null)
@@ -85,7 +88,9 @@ function Chat({ chatId }) {
             if (Number.isFinite(oldTeamPct) && oldTeamPct >= 20 && oldTeamPct <= 80) {
                 return { team: oldTeamPct, models: 100 - oldTeamPct, files: 0, calendar: 24, daily: 42, agent: 34 }
             }
-        } catch {}
+        } catch {
+            // Ignore malformed saved layout preferences.
+        }
         return { team: 47, models: 53, files: 0, calendar: 24, daily: 42, agent: 34 }
     })
     const [isResizing, setIsResizing] = useState(false)
@@ -103,7 +108,9 @@ function Chat({ chatId }) {
                     agent: saved.agent !== false,
                 }
             }
-        } catch {}
+        } catch {
+            // Ignore malformed saved panel preferences.
+        }
         return { team: true, models: true, files: false, calendar: true, daily: true, agent: true }
     })
     const [viewGroup, setViewGroup] = useState(() => {
@@ -430,6 +437,15 @@ function Chat({ chatId }) {
     }, [showStickyTargetDropdown])
 
     useEffect(() => {
+        if (!showFeatureTray) return
+        const timeout = window.setTimeout(() => {
+            setShowFeatureTray(false)
+            setShowFeatureMore(false)
+        }, 5000)
+        return () => window.clearTimeout(timeout)
+    }, [showFeatureTray])
+
+    useEffect(() => {
         if (!loading && stickyMention && !stickyMentionTarget) {
             setStickyMention(null)
         }
@@ -472,6 +488,7 @@ function Chat({ chatId }) {
     async function handleSendMessage() {
         if (!inputText.trim()) return
         const text = inputText
+        const isSideAsk = sideAskActive
         const manualMentions = findMentions(text, mentionables)
         const effectiveTarget = manualMentions.length === 0 ? stickyMentionTarget : null
         const messageText = effectiveTarget ? `@${effectiveTarget.display_name} ${text}` : text
@@ -485,7 +502,8 @@ function Chat({ chatId }) {
                 chat_id: chatId,
                 sender_type: "user",
                 sender_user_id: user.id,
-                content: messageText
+                content: messageText,
+                included_in_context: !isSideAsk
             })
             .select("*, invited_llms(id, display_name, display_number, model_type)")
             .single()
@@ -494,6 +512,7 @@ function Chat({ chatId }) {
             console.error("Message insert error:", msgError)
             alert("Failed to send message: " + msgError.message)
             setInputText(text)
+            setSideAskActive(isSideAsk)
             return
         }
 
@@ -504,12 +523,12 @@ function Chat({ chatId }) {
         const targetLLMs = mentioned.length > 0 ? [mentioned[0].target] : []
 
         for (const llm of targetLLMs) {
-            await streamLLMReply(llm)
+            await streamLLMReply(llm, null, isSideAsk ? newMsg.id : null)
         }
     }
 
-    async function streamLLMReply(llm, replaceMessageId = null) {
-        setPendingLLMs(prev => ({ ...prev, [llm.id]: { text: "", replaceMessageId } }))
+    async function streamLLMReply(llm, replaceMessageId = null, sideMessageId = null) {
+        setPendingLLMs(prev => ({ ...prev, [llm.id]: { text: "", replaceMessageId, sideMessageId } }))
         try {
             const res = await fetch(`${API_BASE}/askLLM`, {
                 method: "POST",
@@ -518,6 +537,7 @@ function Chat({ chatId }) {
                     chat_id: chatId,
                     llm_id: llm.id,
                     ...(replaceMessageId ? { replace_message_id: replaceMessageId } : {}),
+                    ...(sideMessageId ? { side_message_id: sideMessageId } : {}),
                 })
             })
             if (!res.ok) {
@@ -617,6 +637,21 @@ function Chat({ chatId }) {
         if (!llm) return
         if (pendingLLMs[llm.id]) return
         await streamLLMReply(llm, msg.id)
+    }
+
+    async function includeMessageInContext(msg) {
+        if (!msg?.id || msg.included_in_context !== false) return
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, included_in_context: true } : m))
+        const { error } = await supabase
+            .from("messages")
+            .update({ included_in_context: true })
+            .eq("id", msg.id)
+            .eq("chat_id", chatId)
+        if (error) {
+            console.error("Failed to add message to context:", error)
+            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, included_in_context: false } : m))
+            alert("Failed to add message to context: " + error.message)
+        }
     }
 
     function openContext(llmId) {
@@ -1081,52 +1116,147 @@ function Chat({ chatId }) {
         </div>
     )
 
+    const alwaysFeaturePill = stickyMentionTarget && stickyMentionColor && (
+        <button
+            type="button"
+            onClick={() => {
+                setStickyMention(null)
+                setShowFeatureTray(false)
+                setShowMentionDropdown(false)
+            }}
+            className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left transition-colors ${stickyMentionColor.softBorder} ${stickyMentionColor.softBg} hover:bg-[var(--color-surface-3)]`}
+            title="Turn off Always"
+        >
+            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${stickyMentionColor.avatarBg} ${stickyMentionColor.avatarText}`}>
+                {stickyMentionBadge.initials}
+            </span>
+            <span className="min-w-0">
+                <span className="block max-w-[12rem] truncate text-xs text-[var(--color-fg)]">
+                    Always sending to <span className={`font-medium ${stickyMentionColor.text}`}>@{stickyMentionTarget.display_name}</span>
+                </span>
+            </span>
+        </button>
+    )
+
+    const sideAskFeaturePill = sideAskActive && (
+        <button
+            type="button"
+            onClick={() => setSideAskActive(false)}
+            className="flex items-center gap-2 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1.5 text-left text-[var(--color-fg-muted)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
+            title="Turn off Ask Side"
+        >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-3)] text-[10px] font-semibold text-[var(--color-fg)]">
+                SA
+            </span>
+            <span className="truncate text-xs font-medium">Ask Side is on</span>
+        </button>
+    )
+
+    const activeFeatureStrips = (alwaysFeaturePill || sideAskFeaturePill) && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+            {alwaysFeaturePill}
+            {sideAskFeaturePill}
+        </div>
+    )
+
+    const SideContextBadge = ({ msg, align = "start" }) => (
+        <span className={`mb-1 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-fg-muted)] ${align === "end" ? "self-end" : "self-start"}`}>
+            <span>Not in context</span>
+            <button
+                onClick={() => includeMessageInContext(msg)}
+                className="rounded-full px-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
+                title="Add this message back to context"
+            >
+                Add
+            </button>
+        </span>
+    )
+
+    const featureTray = showFeatureTray && (
+        <div
+            className="absolute bottom-2 left-12 z-20 flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-1 shadow-2xl"
+            onMouseEnter={() => setShowFeatureTray(true)}
+        >
+            <button
+                type="button"
+                onClick={() => {
+                    setShowStickyTargetDropdown(true)
+                    setShowFeatureTray(false)
+                    setShowMentionDropdown(false)
+                }}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                    stickyMentionTarget && stickyMentionColor
+                        ? `${stickyMentionColor.softBorder} ${stickyMentionColor.softBg} ${stickyMentionColor.text}`
+                        : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
+                }`}
+            >
+                <TargetIcon />
+                Always
+            </button>
+            <button
+                type="button"
+                onClick={() => {
+                    setSideAskActive(true)
+                    setShowFeatureTray(false)
+                    setShowFeatureMore(false)
+                    inputRef.current?.focus()
+                }}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                    sideAskActive
+                        ? 'border-[var(--color-fg-subtle)] bg-[var(--color-surface-3)] text-[var(--color-fg)]'
+                        : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
+                }`}
+                title="Ask a side question without adding it to context"
+            >
+                <SideAskIcon />
+                Ask Side
+            </button>
+            <button
+                type="button"
+                onClick={() => setShowFeatureMore(v => !v)}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                    showFeatureMore
+                        ? 'border-[var(--color-fg-subtle)] bg-[var(--color-surface-3)] text-[var(--color-fg)]'
+                        : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
+                }`}
+                title="More features"
+            >
+                <MoreIcon />
+                More
+            </button>
+            {showFeatureMore && (
+                <div className="absolute bottom-11 right-0 w-52 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] py-1 shadow-2xl">
+                    <FeatureMoreItem icon={<AttachIcon />} label="Attach file" detail="Placeholder" />
+                    <FeatureMoreItem icon={<WebIcon />} label="Web search" detail="Placeholder" />
+                    <FeatureMoreItem icon={<VoiceIcon />} label="Voice note" detail="Placeholder" />
+                    <div className="my-1 border-t border-[var(--color-line-soft)]" />
+                    <FeatureMoreItem icon={<ExportIcon />} label="Export chat" detail="Placeholder" />
+                </div>
+            )}
+        </div>
+    )
+
     /* ---------- Input ---------- */
     const inputBar = (
         <div className="border-t border-[var(--color-line-soft)] bg-[var(--color-surface-1)] px-4 py-3">
             <div ref={composerRef} className="relative">
                 {mentionDropdown}
                 {stickyTargetDropdown}
-                {stickyMentionTarget && stickyMentionColor && (
-                    <div className={`mb-2 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${stickyMentionColor.softBorder} ${stickyMentionColor.softBg}`}>
-                        <div className="flex min-w-0 items-center gap-2.5">
-                            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${stickyMentionColor.avatarBg} ${stickyMentionColor.avatarText}`}>
-                                {stickyMentionBadge.initials}
-                            </span>
-                            <div className="min-w-0">
-                                <div className="truncate text-xs text-[var(--color-fg)]">
-                                    Always sending to <span className={`font-medium ${stickyMentionColor.text}`}>@{stickyMentionTarget.display_name}</span>
-                                </div>
-                                <div className="truncate text-[10px] text-[var(--color-fg-subtle)]">
-                                    Manual @mentions override this for a single message.
-                                </div>
-                            </div>
-                        </div>
-                        <button
-                            onClick={() => setStickyMention(null)}
-                            className="shrink-0 rounded-lg px-2 py-1 text-[11px] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
-                        >
-                            Turn off
-                        </button>
-                    </div>
-                )}
+                {activeFeatureStrips}
                 <div className="flex items-end gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 transition-colors focus-within:border-[var(--color-fg-subtle)]">
                     <button
                         onClick={() => {
-                            setShowStickyTargetDropdown(v => !v)
+                            setShowFeatureTray(v => !v)
+                            setShowStickyTargetDropdown(false)
                             setShowMentionDropdown(false)
                         }}
-                        className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs font-medium transition-colors ${
-                            stickyMentionTarget && stickyMentionColor
-                                ? `${stickyMentionColor.softBorder} ${stickyMentionColor.softBg} ${stickyMentionColor.text}`
-                                : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
-                        }`}
-                        aria-label="Choose default message target"
-                        title={stickyMentionTarget ? `Always send to @${stickyMentionTarget.display_name}` : 'Choose default message target'}
+                        className={`relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[var(--color-fg-muted)] transition-colors hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)] ${showFeatureTray ? 'border-[var(--color-fg-subtle)] bg-[var(--color-surface-3)]' : 'border-[var(--color-line)]'}`}
+                        aria-label="Open message features"
+                        title="Message features"
                     >
-                        <TargetIcon />
-                        <span className="hidden sm:inline">Always</span>
+                        <FeatureIcon />
                     </button>
+                    {featureTray}
                     <textarea
                         ref={inputRef}
                         rows={1}
@@ -1283,6 +1413,7 @@ function Chat({ chatId }) {
                         const profile = profilesById[msg.sender_user_id]
                         const displayName = isMe ? 'You' : (profile?.first_name || 'User')
                         const avatarLetter = (displayName[0] || 'U').toUpperCase()
+                        const isSideMessage = msg.included_in_context === false
                         return (
                             <div key={msg.id} className={`flex items-start gap-3 lp-fade-in ${isMe ? 'flex-row-reverse' : ''}`}>
                                 <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${isMe ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black' : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'}`}>
@@ -1290,6 +1421,9 @@ function Chat({ chatId }) {
                                 </div>
                                 <div className={`min-w-0 max-w-[88%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
                                     <span className={`mb-1 text-[11px] text-[var(--color-fg-subtle)] ${isMe ? 'text-right' : ''}`}>{displayName}</span>
+                                    {isSideMessage && (
+                                        <SideContextBadge msg={msg} align={isMe ? "end" : "start"} />
+                                    )}
                                     <Message
                                         text={msg.content}
                                         isMe={isMe}
@@ -1335,6 +1469,7 @@ function Chat({ chatId }) {
                             const llmInfo = msg.invited_llms
                             const c = getLLMColor(llmInfo?.display_number)
                             const isJoinMessage = msg.kind === 'join'
+                            const isSideMessage = msg.included_in_context === false
 
                             if (isJoinMessage) {
                                 return (
@@ -1378,6 +1513,9 @@ function Chat({ chatId }) {
                                             </span>
                                         </button>
                                         <div className="flex items-center gap-2">
+                                            {isSideMessage && (
+                                                <SideContextBadge msg={msg} />
+                                            )}
                                             {isRegenerating ? (
                                                 <span className="text-[10px] text-[var(--color-fg-subtle)]">
                                                     {hasStreamingText ? 'streaming…' : 'thinking…'}
@@ -1430,6 +1568,7 @@ function Chat({ chatId }) {
                             const c = getLLMColor(llm.display_number)
                             const text = (state && state.text) || ""
                             const hasText = text.length > 0
+                            const isSideReply = !!state?.sideMessageId
                             return (
                                 <div
                                     key={`pending-${llmId}`}
@@ -1440,6 +1579,11 @@ function Chat({ chatId }) {
                                             {getLLMInitials(llm.display_name)}
                                         </span>
                                         <span className={`text-sm font-medium ${c.text}`}>{llm.display_name}</span>
+                                        {isSideReply && (
+                                            <span className="rounded-full border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-fg-muted)]">
+                                                Not in context
+                                            </span>
+                                        )}
                                         <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">{hasText ? 'streaming…' : 'thinking…'}</span>
                                     </header>
                                     {hasText ? (
@@ -1692,6 +1836,24 @@ function TabBtn({ children, active, onClick }) {
     )
 }
 
+function FeatureMoreItem({ icon, label, detail }) {
+    return (
+        <button
+            type="button"
+            onClick={() => {}}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-[var(--color-surface-3)]"
+        >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[var(--color-line-soft)] text-[var(--color-fg-muted)]">
+                {icon}
+            </span>
+            <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-[var(--color-fg)]">{label}</span>
+                <span className="block truncate text-[10px] text-[var(--color-fg-subtle)]">{detail}</span>
+            </span>
+        </button>
+    )
+}
+
 function EmptyTeam() {
     return (
         <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
@@ -1750,6 +1912,70 @@ function TargetIcon() {
             <line x1="12" y1="19" x2="12" y2="22" />
             <line x1="2" y1="12" x2="5" y2="12" />
             <line x1="19" y1="12" x2="22" y2="12" />
+        </svg>
+    )
+}
+function FeatureIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v4" />
+            <path d="M12 18v4" />
+            <path d="M2 12h4" />
+            <path d="M18 12h4" />
+        </svg>
+    )
+}
+function SideAskIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H9l-4 4v-4H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M9 8h6" />
+            <path d="M9 12h3" />
+        </svg>
+    )
+}
+function MoreIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="19" cy="12" r="1" />
+            <circle cx="5" cy="12" r="1" />
+        </svg>
+    )
+}
+function AttachIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+        </svg>
+    )
+}
+function WebIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20" />
+            <path d="M12 2a15.3 15.3 0 0 1 0 20" />
+            <path d="M12 2a15.3 15.3 0 0 0 0 20" />
+        </svg>
+    )
+}
+function VoiceIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <path d="M12 19v3" />
+        </svg>
+    )
+}
+function ExportIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <path d="M7 10l5 5 5-5" />
+            <path d="M12 15V3" />
         </svg>
     )
 }
