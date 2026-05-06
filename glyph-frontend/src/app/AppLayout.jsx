@@ -56,15 +56,35 @@ function AppLayout() {
         return () => document.removeEventListener('mousedown', onClick)
     }, [])
 
+    // Pinned chats first (most-recently-pinned on top), then unpinned by joined_at desc.
+    function sortChats(list) {
+        return [...list].sort((a, b) => {
+            if (a.pinned_at && !b.pinned_at) return -1
+            if (!a.pinned_at && b.pinned_at) return 1
+            if (a.pinned_at && b.pinned_at) {
+                return new Date(b.pinned_at) - new Date(a.pinned_at)
+            }
+            const aTime = a.joined_at || a.created_at || 0
+            const bTime = b.joined_at || b.created_at || 0
+            return new Date(bTime) - new Date(aTime)
+        })
+    }
+
     async function fetchChats() {
         if (!user) return
         const { data } = await supabase
             .from("chat_participants")
-            .select("chat_id, role, chats(id, name, created_at)")
+            .select("chat_id, role, pinned_at, joined_at, chats(id, name, created_at)")
             .eq("user_id", user.id)
+            .order("pinned_at", { ascending: false, nullsFirst: false })
             .order("joined_at", { ascending: false })
         if (data) {
-            setChats(data.map(p => ({ ...p.chats, role: p.role })))
+            setChats(data.map(p => ({
+                ...p.chats,
+                role: p.role,
+                pinned_at: p.pinned_at,
+                joined_at: p.joined_at,
+            })))
         }
     }
 
@@ -87,7 +107,7 @@ function AppLayout() {
             role: "owner"
         })
 
-        setChats(prev => [{ ...chat, role: "owner" }, ...prev])
+        setChats(prev => sortChats([{ ...chat, role: "owner", pinned_at: null, joined_at: new Date().toISOString() }, ...prev]))
         navigate(`/app/chat/${chat.id}`)
     }
 
@@ -127,7 +147,7 @@ function AppLayout() {
 
         if (msgError) console.error("Message insert error:", msgError)
 
-        setChats(prev => [{ ...chat, role: "owner" }, ...prev])
+        setChats(prev => sortChats([{ ...chat, role: "owner", pinned_at: null, joined_at: new Date().toISOString() }, ...prev]))
         setLandingInput("")
         navigate(`/app/chat/${chat.id}`)
     }
@@ -140,6 +160,22 @@ function AppLayout() {
     function handleLeaveChat(chat, e) {
         e?.stopPropagation()
         setLeaveChatTarget(chat)
+    }
+
+    async function handleTogglePin(chat, e) {
+        e?.stopPropagation()
+        const newPinnedAt = chat.pinned_at ? null : new Date().toISOString()
+        const prev = chat.pinned_at
+        setChats(list => sortChats(list.map(c => c.id === chat.id ? { ...c, pinned_at: newPinnedAt } : c)))
+        const { error } = await supabase
+            .from("chat_participants")
+            .update({ pinned_at: newPinnedAt })
+            .eq("chat_id", chat.id)
+            .eq("user_id", user.id)
+        if (error) {
+            setChats(list => sortChats(list.map(c => c.id === chat.id ? { ...c, pinned_at: prev } : c)))
+            alert("Failed to update pin: " + error.message)
+        }
     }
 
     function handleRenameStart(chat, e) {
@@ -285,86 +321,119 @@ function AppLayout() {
                     </div>
 
                     {/* Conversations */}
-                    {!sidebarCollapsed && (
-                        <div className="mt-4 flex min-h-0 flex-1 flex-col px-3">
-                            <div className="mb-2 flex items-center justify-between px-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                                    Conversations
-                                </span>
-                                <span className="text-[10px] text-[var(--color-fg-subtle)]">{chats.length}</span>
-                            </div>
+                    {!sidebarCollapsed && (() => {
+                        const pinnedChats = chats.filter(c => c.pinned_at)
+                        const unpinnedChats = chats.filter(c => !c.pinned_at)
 
-                            <div className="lp-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
-                                {chats.length === 0 && (
-                                    <p className="px-2 py-3 text-xs text-[var(--color-fg-subtle)]">
-                                        No chats yet. Create one or join with a code.
-                                    </p>
-                                )}
-                                {chats.map(chat => {
-                                    const isActive = location.pathname === `/app/chat/${chat.id}`
-                                    const isEditing = renamingChatId === chat.id
-                                    return (
-                                        <div
-                                            key={chat.id}
-                                            onClick={isEditing ? undefined : () => navigate(`/app/chat/${chat.id}`)}
-                                            className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                                                isEditing ? '' : 'cursor-pointer'
-                                            } ${
-                                                isActive
-                                                    ? 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'
-                                                    : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]'
-                                            }`}
-                                        >
-                                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-[var(--color-line)] group-hover:bg-[var(--color-fg-subtle)]'}`} />
-                                            {isEditing ? (
-                                                <input
-                                                    autoFocus
-                                                    value={renameDraft}
-                                                    onChange={(e) => setRenameDraft(e.target.value)}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault()
-                                                            handleRenameCommit(chat)
-                                                        } else if (e.key === 'Escape') {
-                                                            e.preventDefault()
-                                                            handleRenameCancel()
-                                                        }
-                                                    }}
-                                                    onBlur={() => {
-                                                        if (skipNextRenameBlur.current) {
-                                                            skipNextRenameBlur.current = false
-                                                            return
-                                                        }
-                                                        handleRenameCommit(chat)
-                                                    }}
-                                                    className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-fg-subtle)]"
-                                                />
-                                            ) : (
-                                                <>
-                                                    <span className="flex-1 truncate">{chat.name || 'Untitled'}</span>
-                                                    <button
-                                                        onClick={(e) => handleRenameStart(chat, e)}
-                                                        className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)] group-hover:opacity-100"
-                                                        title="Rename chat"
-                                                    >
-                                                        <PencilIcon size={12} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => handleLeaveChat(chat, e)}
-                                                        className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-rose-400 group-hover:opacity-100"
-                                                        title="Leave chat"
-                                                    >
-                                                        <CloseIcon size={12} />
-                                                    </button>
-                                                </>
-                                            )}
+                        const renderRow = (chat) => {
+                            const isActive = location.pathname === `/app/chat/${chat.id}`
+                            const isEditing = renamingChatId === chat.id
+                            return (
+                                <div
+                                    key={chat.id}
+                                    onClick={isEditing ? undefined : () => navigate(`/app/chat/${chat.id}`)}
+                                    className={`group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                                        isEditing ? '' : 'cursor-pointer'
+                                    } ${
+                                        isActive
+                                            ? 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'
+                                            : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]'
+                                    }`}
+                                >
+                                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-[var(--color-line)] group-hover:bg-[var(--color-fg-subtle)]'}`} />
+                                    {isEditing ? (
+                                        <input
+                                            autoFocus
+                                            value={renameDraft}
+                                            onChange={(e) => setRenameDraft(e.target.value)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault()
+                                                    handleRenameCommit(chat)
+                                                } else if (e.key === 'Escape') {
+                                                    e.preventDefault()
+                                                    handleRenameCancel()
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                if (skipNextRenameBlur.current) {
+                                                    skipNextRenameBlur.current = false
+                                                    return
+                                                }
+                                                handleRenameCommit(chat)
+                                            }}
+                                            className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-fg-subtle)]"
+                                        />
+                                    ) : (
+                                        <>
+                                            <span className="flex-1 truncate">{chat.name || 'Untitled'}</span>
+                                            <button
+                                                onClick={(e) => handleTogglePin(chat, e)}
+                                                className={`rounded p-0.5 hover:bg-[var(--color-surface-3)] ${
+                                                    chat.pinned_at
+                                                        ? 'text-amber-400 opacity-100'
+                                                        : 'text-[var(--color-fg-subtle)] opacity-0 hover:text-[var(--color-fg)] group-hover:opacity-100'
+                                                }`}
+                                                title={chat.pinned_at ? 'Unpin chat' : 'Pin chat'}
+                                            >
+                                                <PinIcon size={12} filled={!!chat.pinned_at} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => handleRenameStart(chat, e)}
+                                                className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)] group-hover:opacity-100"
+                                                title="Rename chat"
+                                            >
+                                                <PencilIcon size={12} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => handleLeaveChat(chat, e)}
+                                                className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-rose-400 group-hover:opacity-100"
+                                                title="Leave chat"
+                                            >
+                                                <CloseIcon size={12} />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            )
+                        }
+
+                        return (
+                            <div className="mt-4 flex min-h-0 flex-1 flex-col px-3">
+                                <div className="lp-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+                                    {pinnedChats.length > 0 && (
+                                        <div className="mb-3">
+                                            <div className="mb-2 flex items-center justify-between px-1">
+                                                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                                                    Pinned
+                                                </span>
+                                                <span className="text-[10px] text-[var(--color-fg-subtle)]">{pinnedChats.length}</span>
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                {pinnedChats.map(renderRow)}
+                                            </div>
                                         </div>
-                                    )
-                                })}
+                                    )}
+
+                                    <div className="mb-2 flex items-center justify-between px-1">
+                                        <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                                            Conversations
+                                        </span>
+                                        <span className="text-[10px] text-[var(--color-fg-subtle)]">{unpinnedChats.length}</span>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        {chats.length === 0 && (
+                                            <p className="px-2 py-3 text-xs text-[var(--color-fg-subtle)]">
+                                                No chats yet. Create one or join with a code.
+                                            </p>
+                                        )}
+                                        {unpinnedChats.map(renderRow)}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )
+                    })()}
 
                     {/* User */}
                     <div className="relative mt-auto border-t border-[var(--color-line-soft)] p-2" ref={userMenuRef}>
@@ -556,6 +625,14 @@ function LogoutIcon() {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+    )
+}
+function PinIcon({ size = 14, filled = false }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 17v5" />
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
         </svg>
     )
 }
