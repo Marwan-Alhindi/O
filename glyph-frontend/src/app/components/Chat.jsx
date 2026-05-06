@@ -228,7 +228,14 @@ function Chat({ chatId }) {
                     const updated = payload.new
                     if (!updated?.id) return
                     setMessages(prev => prev.map(m => m.id === updated.id
-                        ? { ...m, content: updated.content, deleted_at: updated.deleted_at, edited_at: updated.edited_at }
+                        ? {
+                            ...m,
+                            content: updated.content,
+                            deleted_at: updated.deleted_at,
+                            edited_at: updated.edited_at,
+                            included_in_context: updated.included_in_context,
+                            side_parent_message_id: updated.side_parent_message_id,
+                        }
                         : m
                     ))
                 }
@@ -438,11 +445,14 @@ function Chat({ chatId }) {
 
     useEffect(() => {
         if (!showFeatureTray) return
-        const timeout = window.setTimeout(() => {
-            setShowFeatureTray(false)
-            setShowFeatureMore(false)
-        }, 5000)
-        return () => window.clearTimeout(timeout)
+        function handleOutsideClick(event) {
+            if (composerRef.current && !composerRef.current.contains(event.target)) {
+                setShowFeatureTray(false)
+                setShowFeatureMore(false)
+            }
+        }
+        document.addEventListener('mousedown', handleOutsideClick)
+        return () => document.removeEventListener('mousedown', handleOutsideClick)
     }, [showFeatureTray])
 
     useEffect(() => {
@@ -641,15 +651,46 @@ function Chat({ chatId }) {
 
     async function includeMessageInContext(msg) {
         if (!msg?.id || msg.included_in_context !== false) return
-        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, included_in_context: true } : m))
+        let idsToInclude = [msg.id]
+        if (msg.side_parent_message_id) {
+            idsToInclude = [msg.id, msg.side_parent_message_id]
+        } else {
+            const childIds = messages
+                .filter(m => m.side_parent_message_id === msg.id)
+                .map(m => m.id)
+            idsToInclude = [msg.id, ...childIds]
+
+            // Backfill behavior for side messages created before
+            // side_parent_message_id existed.
+            const index = messages.findIndex(m => m.id === msg.id)
+            if (index !== -1 && childIds.length === 0) {
+                if (msg.sender_type === "user") {
+                    const nextSideReply = messages.slice(index + 1).find(m =>
+                        m.sender_type === "llm" &&
+                        m.included_in_context === false &&
+                        !m.side_parent_message_id
+                    )
+                    if (nextSideReply) idsToInclude.push(nextSideReply.id)
+                } else if (msg.sender_type === "llm") {
+                    const previousSideUser = [...messages.slice(0, index)].reverse().find(m =>
+                        m.sender_type === "user" &&
+                        m.included_in_context === false
+                    )
+                    if (previousSideUser) idsToInclude.push(previousSideUser.id)
+                }
+            }
+        }
+        idsToInclude = [...new Set(idsToInclude)].filter(Boolean)
+
+        setMessages(prev => prev.map(m => idsToInclude.includes(m.id) ? { ...m, included_in_context: true } : m))
         const { error } = await supabase
             .from("messages")
             .update({ included_in_context: true })
-            .eq("id", msg.id)
+            .in("id", idsToInclude)
             .eq("chat_id", chatId)
         if (error) {
             console.error("Failed to add message to context:", error)
-            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, included_in_context: false } : m))
+            setMessages(prev => prev.map(m => idsToInclude.includes(m.id) ? { ...m, included_in_context: false } : m))
             alert("Failed to add message to context: " + error.message)
         }
     }
@@ -1175,55 +1216,46 @@ function Chat({ chatId }) {
     const featureTray = showFeatureTray && (
         <div
             className="absolute bottom-2 left-12 z-20 flex items-center gap-1.5 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-1 shadow-2xl"
-            onMouseEnter={() => setShowFeatureTray(true)}
         >
-            <button
-                type="button"
+            <FeatureAction
+                active={!!stickyMentionTarget}
+                activeClass={stickyMentionTarget && stickyMentionColor ? `${stickyMentionColor.softBorder} ${stickyMentionColor.softBg} ${stickyMentionColor.text}` : ""}
+                icon={<TargetIcon />}
+                label="Always"
+                popoverTitle="Always send to"
+                popoverText="Pick a default person or model for messages that do not include a manual @mention."
                 onClick={() => {
+                    if (stickyMentionTarget) {
+                        setStickyMention(null)
+                        setShowStickyTargetDropdown(false)
+                        setShowFeatureTray(false)
+                        return
+                    }
                     setShowStickyTargetDropdown(true)
                     setShowFeatureTray(false)
+                    setMentionFilter("")
                     setShowMentionDropdown(false)
                 }}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
-                    stickyMentionTarget && stickyMentionColor
-                        ? `${stickyMentionColor.softBorder} ${stickyMentionColor.softBg} ${stickyMentionColor.text}`
-                        : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
-                }`}
-            >
-                <TargetIcon />
-                Always
-            </button>
-            <button
-                type="button"
+            />
+            <FeatureAction
+                active={sideAskActive}
+                icon={<SideAskIcon />}
+                label="Ask Side"
+                popoverTitle="Ask Side"
+                popoverText="Keep side questions and answers visible, but exclude them from future model context."
                 onClick={() => {
-                    setSideAskActive(true)
+                    setSideAskActive(v => !v)
                     setShowFeatureTray(false)
                     setShowFeatureMore(false)
                     inputRef.current?.focus()
                 }}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
-                    sideAskActive
-                        ? 'border-[var(--color-fg-subtle)] bg-[var(--color-surface-3)] text-[var(--color-fg)]'
-                        : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
-                }`}
-                title="Ask a side question without adding it to context"
-            >
-                <SideAskIcon />
-                Ask Side
-            </button>
-            <button
-                type="button"
+            />
+            <FeatureAction
+                active={showFeatureMore}
+                icon={<MoreIcon />}
+                label="More"
                 onClick={() => setShowFeatureMore(v => !v)}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
-                    showFeatureMore
-                        ? 'border-[var(--color-fg-subtle)] bg-[var(--color-surface-3)] text-[var(--color-fg)]'
-                        : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
-                }`}
-                title="More features"
-            >
-                <MoreIcon />
-                More
-            </button>
+            />
             {showFeatureMore && (
                 <div className="absolute bottom-11 right-0 w-52 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] py-1 shadow-2xl">
                     <FeatureMoreItem icon={<AttachIcon />} label="Attach file" detail="Placeholder" />
@@ -1833,6 +1865,31 @@ function TabBtn({ children, active, onClick }) {
         >
             {children}
         </button>
+    )
+}
+
+function FeatureAction({ active, activeClass = "", icon, label, popoverTitle, popoverText, onClick }) {
+    const baseClass = active
+        ? (activeClass || 'border-[var(--color-fg-subtle)] bg-[var(--color-surface-3)] text-[var(--color-fg)]')
+        : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
+
+    return (
+        <div className="group relative">
+            <button
+                type="button"
+                onClick={onClick}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${baseClass}`}
+            >
+                {icon}
+                {label}
+            </button>
+            {popoverTitle && popoverText && (
+                <div className="pointer-events-none absolute bottom-10 left-0 z-40 hidden w-60 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-3 text-left shadow-2xl group-hover:block group-focus-within:block">
+                    <div className="text-xs font-medium text-[var(--color-fg)]">{popoverTitle}</div>
+                    <div className="mt-1 text-[10px] leading-4 text-[var(--color-fg-subtle)]">{popoverText}</div>
+                </div>
+            )}
+        </div>
     )
 }
 

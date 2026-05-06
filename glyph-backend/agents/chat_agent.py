@@ -144,6 +144,7 @@ async def run_agent_stream(
             "sender_llm_id": llm_id,
             "content": final_text,
             "included_in_context": side_message_id is None,
+            "side_parent_message_id": side_message_id,
         }).execute()
         msg_id = insert_result.data[0]["id"] if insert_result.data else None
 
