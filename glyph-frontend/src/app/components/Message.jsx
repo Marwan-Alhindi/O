@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { getLLMColor } from "../utils/llmColors"
+import { getLLMColor, getPersonColor } from "../utils/llmColors"
 import { findMentions } from "../utils/mentions"
 
 const COLLAPSE_THRESHOLD = 320
@@ -61,7 +61,9 @@ function Message({
                 type: 'mention',
                 value: m.raw,
                 kind: m.kind,
-                color: m.kind === 'llm' ? getLLMColor(m.target.llm.display_number) : null,
+                color: m.kind === 'llm'
+                    ? getLLMColor(m.target.llm.display_number)
+                    : getPersonColor(m.target.profile?.id || m.target.id || m.target.display_name),
             })
             cursor = m.end
         }
@@ -204,11 +206,11 @@ function renderSegments(segments, maxChars) {
                         {value}
                     </span>
                 )
-            } else if (seg.kind === 'person') {
+            } else if (seg.kind === 'person' && color) {
                 out.push(
                     <span
                         key={i}
-                        className="mx-0.5 inline-flex items-center rounded bg-[var(--color-surface-3)] px-1 font-medium text-[var(--color-fg)]"
+                        className={`mx-0.5 inline-flex items-center rounded border px-1 font-medium ${color.softBorder} ${color.softBg} ${color.text}`}
                     >
                         {value}
                     </span>

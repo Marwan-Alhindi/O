@@ -101,9 +101,93 @@ const PALETTE = [
   },
 ];
 
+const PERSON_PALETTE = [
+  {
+    name: "indigo",
+    avatarBg: "bg-indigo-100",
+    avatarText: "text-indigo-950",
+    text: "text-indigo-50",
+    softBg: "bg-indigo-100/8",
+    softBorder: "border-indigo-200/30",
+    ring: "ring-indigo-200/60",
+    dot: "bg-indigo-200",
+    glow: "shadow-[0_0_24px_-6px_rgba(99,102,241,0.55)]",
+    hex: "#6366f1",
+  },
+  {
+    name: "orange",
+    avatarBg: "bg-orange-100",
+    avatarText: "text-orange-950",
+    text: "text-orange-50",
+    softBg: "bg-orange-100/8",
+    softBorder: "border-orange-200/30",
+    ring: "ring-orange-200/60",
+    dot: "bg-orange-200",
+    glow: "shadow-[0_0_24px_-6px_rgba(249,115,22,0.55)]",
+    hex: "#f97316",
+  },
+  {
+    name: "red",
+    avatarBg: "bg-red-100",
+    avatarText: "text-red-950",
+    text: "text-red-50",
+    softBg: "bg-red-100/8",
+    softBorder: "border-red-200/30",
+    ring: "ring-red-200/60",
+    dot: "bg-red-200",
+    glow: "shadow-[0_0_24px_-6px_rgba(239,68,68,0.55)]",
+    hex: "#ef4444",
+  },
+  {
+    name: "teal",
+    avatarBg: "bg-teal-100",
+    avatarText: "text-teal-950",
+    text: "text-teal-50",
+    softBg: "bg-teal-100/8",
+    softBorder: "border-teal-200/30",
+    ring: "ring-teal-200/60",
+    dot: "bg-teal-200",
+    glow: "shadow-[0_0_24px_-6px_rgba(20,184,166,0.55)]",
+    hex: "#14b8a6",
+  },
+  {
+    name: "pink",
+    avatarBg: "bg-pink-100",
+    avatarText: "text-pink-950",
+    text: "text-pink-50",
+    softBg: "bg-pink-100/8",
+    softBorder: "border-pink-200/30",
+    ring: "ring-pink-200/60",
+    dot: "bg-pink-200",
+    glow: "shadow-[0_0_24px_-6px_rgba(236,72,153,0.55)]",
+    hex: "#ec4899",
+  },
+  {
+    name: "yellow",
+    avatarBg: "bg-yellow-100",
+    avatarText: "text-yellow-950",
+    text: "text-yellow-50",
+    softBg: "bg-yellow-100/8",
+    softBorder: "border-yellow-200/30",
+    ring: "ring-yellow-200/60",
+    dot: "bg-yellow-200",
+    glow: "shadow-[0_0_24px_-6px_rgba(250,204,21,0.55)]",
+    hex: "#facc15",
+  },
+];
+
 export function getLLMColor(displayNumber) {
   const n = Number.isFinite(displayNumber) ? Math.max(1, displayNumber) : 1;
   return PALETTE[(n - 1) % PALETTE.length];
+}
+
+export function getPersonColor(personKey) {
+  const key = String(personKey || "person");
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return PERSON_PALETTE[hash % PERSON_PALETTE.length];
 }
 
 export function getLLMInitials(displayName) {

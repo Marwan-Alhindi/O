@@ -10,7 +10,7 @@ import DailyNote from "./DailyNote"
 import Agent from "./Agent"
 import { supabase, API_BASE } from "../../services/supabase"
 import { useAuth } from "../../contexts/AuthContext"
-import { getLLMColor, getLLMInitials, modelTypeLabel } from "../utils/llmColors"
+import { getLLMColor, getLLMInitials, getPersonColor, modelTypeLabel } from "../utils/llmColors"
 import { findMentions, isMentionPrefix } from "../utils/mentions"
 
 const GROUP_KEYS = {
@@ -26,6 +26,27 @@ const PANEL_LABELS = {
     agent: 'Agent',
 }
 
+function getMentionableColor(target) {
+    if (!target) return null
+    return target.kind === 'llm'
+        ? getLLMColor(target.llm.display_number)
+        : getPersonColor(target.profile?.id || target.id || target.display_name)
+}
+
+function getMentionableBadge(target) {
+    if (!target) return { initials: '?', detail: '' }
+    if (target.kind === 'llm') {
+        return {
+            initials: getLLMInitials(target.display_name),
+            detail: modelTypeLabel(target.llm.model_type),
+        }
+    }
+    return {
+        initials: (target.display_name?.[0] || 'U').toUpperCase(),
+        detail: 'teammate',
+    }
+}
+
 function Chat({ chatId }) {
     const [chatName, setChatName] = useState("Chat")
     const [messages, setMessages] = useState([])
@@ -36,6 +57,9 @@ function Chat({ chatId }) {
     const [deleteMessagePending, setDeleteMessagePending] = useState(false)
     const [showMentionDropdown, setShowMentionDropdown] = useState(false)
     const [mentionFilter, setMentionFilter] = useState("")
+    const [stickyMention, setStickyMention] = useState(null)
+    const [stickyMentionLoadedKey, setStickyMentionLoadedKey] = useState(null)
+    const [showStickyTargetDropdown, setShowStickyTargetDropdown] = useState(false)
     const [contextLLM, setContextLLM] = useState(null)
     const [contextUser, setContextUser] = useState(null)
     const [showInviteUser, setShowInviteUser] = useState(false)
@@ -94,6 +118,7 @@ function Chat({ chatId }) {
     const modelsScrollRef = useRef(null)
     const inputRef = useRef(null)
     const splitRef = useRef(null)
+    const composerRef = useRef(null)
 
     // Load chat metadata + messages + LLMs + profiles
     useEffect(() => {
@@ -258,6 +283,11 @@ function Chat({ chatId }) {
         }
     }, [messages])
 
+    const stickyMentionStorageKey = useMemo(() => {
+        if (!chatId || !user?.id) return null
+        return `glyph.stickyMention.${user.id}.${chatId}`
+    }, [chatId, user?.id])
+
     async function handleInviteLLM(name, modelType, instructions, connections) {
         const maxNum = invitedLLMs.reduce((max, l) => Math.max(max, l.display_number || 0), 0)
         const displayNumber = maxNum + 1
@@ -331,9 +361,79 @@ function Chat({ chatId }) {
                 display_name: p.first_name,
                 kind: 'person',
                 profile: p,
-            }))
+        }))
         return [...people, ...llms]
     }, [invitedLLMs, profilesById, user?.id])
+
+    const mentionGroups = useMemo(() => ({
+        people: mentionables.filter(m => m.kind === 'person'),
+        llms: mentionables.filter(m => m.kind === 'llm'),
+    }), [mentionables])
+
+    const stickyMentionTarget = useMemo(() => {
+        if (!stickyMention) return null
+        return mentionables.find(m => m.kind === stickyMention.kind && m.id === stickyMention.id) || null
+    }, [mentionables, stickyMention])
+
+    const stickyMentionColor = useMemo(
+        () => getMentionableColor(stickyMentionTarget),
+        [stickyMentionTarget]
+    )
+
+    const stickyMentionBadge = useMemo(
+        () => getMentionableBadge(stickyMentionTarget),
+        [stickyMentionTarget]
+    )
+
+    useEffect(() => {
+        if (!stickyMentionStorageKey) {
+            setStickyMention(null)
+            setStickyMentionLoadedKey(null)
+            return
+        }
+        try {
+            const saved = JSON.parse(localStorage.getItem(stickyMentionStorageKey) || "null")
+            if (saved?.id && (saved.kind === 'llm' || saved.kind === 'person')) {
+                setStickyMention({ id: saved.id, kind: saved.kind })
+            } else {
+                setStickyMention(null)
+            }
+        } catch (err) {
+            console.error("Failed to load sticky mention preference:", err)
+            setStickyMention(null)
+        }
+        setStickyMentionLoadedKey(stickyMentionStorageKey)
+    }, [stickyMentionStorageKey])
+
+    useEffect(() => {
+        if (!stickyMentionStorageKey || stickyMentionLoadedKey !== stickyMentionStorageKey) return
+        try {
+            if (stickyMention?.id && stickyMention?.kind) {
+                localStorage.setItem(stickyMentionStorageKey, JSON.stringify(stickyMention))
+            } else {
+                localStorage.removeItem(stickyMentionStorageKey)
+            }
+        } catch (err) {
+            console.error("Failed to save sticky mention preference:", err)
+        }
+    }, [stickyMention, stickyMentionLoadedKey, stickyMentionStorageKey])
+
+    useEffect(() => {
+        if (!showStickyTargetDropdown) return
+        function handleOutsideClick(event) {
+            if (composerRef.current && !composerRef.current.contains(event.target)) {
+                setShowStickyTargetDropdown(false)
+            }
+        }
+        document.addEventListener('mousedown', handleOutsideClick)
+        return () => document.removeEventListener('mousedown', handleOutsideClick)
+    }, [showStickyTargetDropdown])
+
+    useEffect(() => {
+        if (!loading && stickyMention && !stickyMentionTarget) {
+            setStickyMention(null)
+        }
+    }, [loading, stickyMention, stickyMentionTarget])
 
     function handleInputChange(e) {
         const value = e.target.value
@@ -349,6 +449,7 @@ function Chat({ chatId }) {
         if (afterAt.length === 0 || isMentionPrefix(afterAt, mentionables)) {
             setMentionFilter(afterAt)
             setShowMentionDropdown(true)
+            setShowStickyTargetDropdown(false)
         } else {
             setShowMentionDropdown(false)
         }
@@ -371,8 +472,12 @@ function Chat({ chatId }) {
     async function handleSendMessage() {
         if (!inputText.trim()) return
         const text = inputText
+        const manualMentions = findMentions(text, mentionables)
+        const effectiveTarget = manualMentions.length === 0 ? stickyMentionTarget : null
+        const messageText = effectiveTarget ? `@${effectiveTarget.display_name} ${text}` : text
         setInputText("")
         setShowMentionDropdown(false)
+        setShowStickyTargetDropdown(false)
 
         const { data: newMsg, error: msgError } = await supabase
             .from("messages")
@@ -380,7 +485,7 @@ function Chat({ chatId }) {
                 chat_id: chatId,
                 sender_type: "user",
                 sender_user_id: user.id,
-                content: text
+                content: messageText
             })
             .select("*, invited_llms(id, display_name, display_number, model_type)")
             .single()
@@ -395,7 +500,7 @@ function Chat({ chatId }) {
         setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg])
 
         // Only model mentions trigger a stream; person mentions stay in the team thread.
-        const mentioned = findMentions(text, mentionables).filter(m => m.kind === 'llm')
+        const mentioned = findMentions(messageText, mentionables).filter(m => m.kind === 'llm')
         const targetLLMs = mentioned.length > 0 ? [mentioned[0].target] : []
 
         for (const llm of targetLLMs) {
@@ -794,8 +899,8 @@ function Chat({ chatId }) {
                         People
                     </div>
                     {filteredMentions.people.map(m => {
-                        const isMe = m.id === user?.id
-                        const initial = (m.display_name[0] || 'U').toUpperCase()
+                        const c = getMentionableColor(m)
+                        const badge = getMentionableBadge(m)
                         return (
                             <button
                                 key={`person-${m.id}`}
@@ -803,15 +908,11 @@ function Chat({ chatId }) {
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => handleSelectMention(m)}
                             >
-                                <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${
-                                    isMe
-                                        ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black'
-                                        : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'
-                                }`}>
-                                    {initial}
+                                <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${c.avatarBg} ${c.avatarText}`}>
+                                    {badge.initials}
                                 </span>
                                 <span className="text-[var(--color-fg)]">@{m.display_name}</span>
-                                <span className="text-xs text-[var(--color-fg-subtle)]">· teammate</span>
+                                <span className={`text-xs ${c.text}`}>· teammate</span>
                             </button>
                         )
                     })}
@@ -867,12 +968,165 @@ function Chat({ chatId }) {
         </div>
     )
 
+    const stickyTargetDropdown = showStickyTargetDropdown && (
+        <div className="absolute bottom-full left-0 right-0 mb-2 max-h-80 overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl lp-scroll">
+            <div className="border-b border-[var(--color-line-soft)] px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                    Always Send To
+                </div>
+                <div className="mt-1 text-xs text-[var(--color-fg-subtle)]">
+                    Applies only when the message has no manual @mention.
+                </div>
+            </div>
+
+            {stickyMentionTarget && stickyMentionColor && (
+                <div className="border-b border-[var(--color-line-soft)] px-3 py-2">
+                    <button
+                        className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm ${stickyMentionColor.softBorder} ${stickyMentionColor.softBg}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                            setStickyMention(null)
+                            setShowStickyTargetDropdown(false)
+                        }}
+                    >
+                        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${stickyMentionColor.avatarBg} ${stickyMentionColor.avatarText}`}>
+                            {stickyMentionBadge.initials}
+                        </span>
+                        <span className="text-[var(--color-fg)]">Turn off default target</span>
+                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">Currently @{stickyMentionTarget.display_name}</span>
+                    </button>
+                </div>
+            )}
+
+            {mentionGroups.people.length === 0 && mentionGroups.llms.length === 0 && (
+                <div className="px-3 py-3 text-xs text-[var(--color-fg-subtle)]">
+                    Invite a teammate or model first.
+                </div>
+            )}
+
+            {mentionGroups.people.length > 0 && (
+                <>
+                    <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                        People
+                    </div>
+                    {mentionGroups.people.map(target => {
+                        const c = getMentionableColor(target)
+                        const badge = getMentionableBadge(target)
+                        const isActive = stickyMentionTarget?.kind === target.kind && stickyMentionTarget?.id === target.id
+                        return (
+                            <button
+                                key={`sticky-person-${target.id}`}
+                                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-3)] ${isActive ? c.softBg : ''}`}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                    setStickyMention({ id: target.id, kind: target.kind })
+                                    setShowStickyTargetDropdown(false)
+                                    inputRef.current?.focus()
+                                }}
+                            >
+                                <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${c.avatarBg} ${c.avatarText}`}>
+                                    {badge.initials}
+                                </span>
+                                <span className="text-[var(--color-fg)]">@{target.display_name}</span>
+                                <span className={`text-xs ${c.text}`}>· {badge.detail}</span>
+                                {isActive && (
+                                    <span className={`ml-auto rounded-full border px-1.5 py-0.5 text-[10px] ${c.softBorder} ${c.text}`}>
+                                        On
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                </>
+            )}
+
+            {mentionGroups.llms.length > 0 && (
+                <>
+                    {mentionGroups.people.length > 0 && (
+                        <div className="border-t border-[var(--color-line-soft)]" />
+                    )}
+                    <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                        Models
+                    </div>
+                    {mentionGroups.llms.map(target => {
+                        const c = getMentionableColor(target)
+                        const badge = getMentionableBadge(target)
+                        const isActive = stickyMentionTarget?.kind === target.kind && stickyMentionTarget?.id === target.id
+                        return (
+                            <button
+                                key={`sticky-llm-${target.id}`}
+                                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-3)] ${isActive ? c.softBg : ''}`}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                    setStickyMention({ id: target.id, kind: target.kind })
+                                    setShowStickyTargetDropdown(false)
+                                    inputRef.current?.focus()
+                                }}
+                            >
+                                <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${c.avatarBg} ${c.avatarText}`}>
+                                    {badge.initials}
+                                </span>
+                                <span className="text-[var(--color-fg)]">@{target.display_name}</span>
+                                <span className={`text-xs ${c.text}`}>· {badge.detail}</span>
+                                {isActive && (
+                                    <span className={`ml-auto rounded-full border px-1.5 py-0.5 text-[10px] ${c.softBorder} ${c.text}`}>
+                                        On
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                </>
+            )}
+        </div>
+    )
+
     /* ---------- Input ---------- */
     const inputBar = (
         <div className="border-t border-[var(--color-line-soft)] bg-[var(--color-surface-1)] px-4 py-3">
-            <div className="relative">
+            <div ref={composerRef} className="relative">
                 {mentionDropdown}
+                {stickyTargetDropdown}
+                {stickyMentionTarget && stickyMentionColor && (
+                    <div className={`mb-2 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${stickyMentionColor.softBorder} ${stickyMentionColor.softBg}`}>
+                        <div className="flex min-w-0 items-center gap-2.5">
+                            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${stickyMentionColor.avatarBg} ${stickyMentionColor.avatarText}`}>
+                                {stickyMentionBadge.initials}
+                            </span>
+                            <div className="min-w-0">
+                                <div className="truncate text-xs text-[var(--color-fg)]">
+                                    Always sending to <span className={`font-medium ${stickyMentionColor.text}`}>@{stickyMentionTarget.display_name}</span>
+                                </div>
+                                <div className="truncate text-[10px] text-[var(--color-fg-subtle)]">
+                                    Manual @mentions override this for a single message.
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setStickyMention(null)}
+                            className="shrink-0 rounded-lg px-2 py-1 text-[11px] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
+                        >
+                            Turn off
+                        </button>
+                    </div>
+                )}
                 <div className="flex items-end gap-2 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 transition-colors focus-within:border-[var(--color-fg-subtle)]">
+                    <button
+                        onClick={() => {
+                            setShowStickyTargetDropdown(v => !v)
+                            setShowMentionDropdown(false)
+                        }}
+                        className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs font-medium transition-colors ${
+                            stickyMentionTarget && stickyMentionColor
+                                ? `${stickyMentionColor.softBorder} ${stickyMentionColor.softBg} ${stickyMentionColor.text}`
+                                : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
+                        }`}
+                        aria-label="Choose default message target"
+                        title={stickyMentionTarget ? `Always send to @${stickyMentionTarget.display_name}` : 'Choose default message target'}
+                    >
+                        <TargetIcon />
+                        <span className="hidden sm:inline">Always</span>
+                    </button>
                     <textarea
                         ref={inputRef}
                         rows={1}
@@ -1484,6 +1738,18 @@ function SendIcon() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
+        </svg>
+    )
+}
+function TargetIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="8" />
+            <circle cx="12" cy="12" r="3" />
+            <line x1="12" y1="2" x2="12" y2="5" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="5" y2="12" />
+            <line x1="19" y1="12" x2="22" y2="12" />
         </svg>
     )
 }
