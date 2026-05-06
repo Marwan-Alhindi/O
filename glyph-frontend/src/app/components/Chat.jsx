@@ -70,6 +70,10 @@ function Chat({ chatId }) {
     const [loading, setLoading] = useState(true)
     const [pendingLLMs, setPendingLLMs] = useState({}) // { llmId: true }
     const [mobileTab, setMobileTab] = useState("team") // "team" | "models"
+    const [teamFilterUserId, setTeamFilterUserId] = useState(null)
+    const [workspaceFilterLLMId, setWorkspaceFilterLLMId] = useState(null)
+    const [showTeamFilterDropdown, setShowTeamFilterDropdown] = useState(false)
+    const [showWorkspaceFilterDropdown, setShowWorkspaceFilterDropdown] = useState(false)
     const [panelWidths, setPanelWidths] = useState(() => {
         try {
             const saved = JSON.parse(localStorage.getItem("glyph.panelWidths") || "null")
@@ -901,6 +905,41 @@ function Chat({ chatId }) {
         }
     }, [openPanels, mobileTab, viewGroup])
 
+    // Reset filters if the selected target is no longer present
+    useEffect(() => {
+        if (teamFilterUserId && !profilesById[teamFilterUserId]) setTeamFilterUserId(null)
+    }, [teamFilterUserId, profilesById])
+    useEffect(() => {
+        if (workspaceFilterLLMId && !invitedLLMs.some(l => l.id === workspaceFilterLLMId)) {
+            setWorkspaceFilterLLMId(null)
+        }
+    }, [workspaceFilterLLMId, invitedLLMs])
+
+    // Close filter dropdowns on outside click / Escape
+    useEffect(() => {
+        if (!showTeamFilterDropdown && !showWorkspaceFilterDropdown) return
+        function onDown(e) {
+            if (showTeamFilterDropdown && !e.target.closest?.('[data-filter="team"]')) {
+                setShowTeamFilterDropdown(false)
+            }
+            if (showWorkspaceFilterDropdown && !e.target.closest?.('[data-filter="workspace"]')) {
+                setShowWorkspaceFilterDropdown(false)
+            }
+        }
+        function onKey(e) {
+            if (e.key === 'Escape') {
+                setShowTeamFilterDropdown(false)
+                setShowWorkspaceFilterDropdown(false)
+            }
+        }
+        document.addEventListener('mousedown', onDown)
+        document.addEventListener('keydown', onKey)
+        return () => {
+            document.removeEventListener('mousedown', onDown)
+            document.removeEventListener('keydown', onKey)
+        }
+    }, [showTeamFilterDropdown, showWorkspaceFilterDropdown])
+
     const filteredMentions = useMemo(() => {
         const q = mentionFilter.toLowerCase()
         const matches = mentionables.filter(m => m.display_name.toLowerCase().startsWith(q))
@@ -911,15 +950,21 @@ function Chat({ chatId }) {
     }, [mentionables, mentionFilter])
 
     // Split messages into team (user + system) and models (llm)
-    const { teamMessages, modelMessages } = useMemo(() => {
-        const team = []
-        const model = []
+    const { teamMessages, modelMessages, teamMessagesAll, modelMessagesAll } = useMemo(() => {
+        const teamAll = []
+        const modelAll = []
         for (const msg of messages) {
-            if (msg.sender_type === 'llm') model.push(msg)
-            else team.push(msg)
+            if (msg.sender_type === 'llm') modelAll.push(msg)
+            else teamAll.push(msg)
         }
-        return { teamMessages: team, modelMessages: model }
-    }, [messages])
+        const team = teamFilterUserId
+            ? teamAll.filter(m => m.sender_user_id === teamFilterUserId)
+            : teamAll
+        const model = workspaceFilterLLMId
+            ? modelAll.filter(m => m.sender_llm_id === workspaceFilterLLMId)
+            : modelAll
+        return { teamMessages: team, modelMessages: model, teamMessagesAll: teamAll, modelMessagesAll: modelAll }
+    }, [messages, teamFilterUserId, workspaceFilterLLMId])
 
     // Extract generated files from message content (markdown links to known extensions)
     const generatedFiles = useMemo(() => {
@@ -947,6 +992,16 @@ function Chat({ chatId }) {
     }, [messages])
 
     const userCount = useMemo(() => Object.keys(profilesById).length || 1, [profilesById])
+
+    const teamPeopleList = useMemo(() => {
+        return Object.values(profilesById)
+            .filter(p => p.first_name)
+            .sort((a, b) => {
+                if (a.id === user?.id) return -1
+                if (b.id === user?.id) return 1
+                return a.first_name.localeCompare(b.first_name)
+            })
+    }, [profilesById, user?.id])
 
     if (loading) {
         return (
@@ -1417,14 +1472,76 @@ function Chat({ chatId }) {
     )
 
     /* ---------- Team pane (left) ---------- */
+    const teamFilterPerson = teamFilterUserId ? profilesById[teamFilterUserId] : null
+    const teamShownCount = teamMessages.filter(m => m.sender_type === 'user').length
+    const teamTotalCount = teamMessagesAll.filter(m => m.sender_type === 'user').length
     const teamPane = (
         <section className="flex min-h-0 flex-1 flex-col bg-[var(--color-canvas)]">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                    Team chat
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                        Team chat
+                    </span>
+                    <div className="relative" data-filter="team">
+                        <button
+                            type="button"
+                            onClick={() => setShowTeamFilterDropdown(v => !v)}
+                            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${
+                                teamFilterUserId
+                                    ? 'border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-fg)]'
+                                    : 'border-[var(--color-line-soft)] bg-transparent text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-muted)]'
+                            }`}
+                            title="Filter by person"
+                        >
+                            <FilterIcon />
+                            <span className="max-w-[8rem] truncate">
+                                {teamFilterPerson
+                                    ? (teamFilterUserId === user?.id ? `${teamFilterPerson.first_name} (you)` : teamFilterPerson.first_name)
+                                    : 'All people'}
+                            </span>
+                            <span className="text-[8px] leading-none">▾</span>
+                        </button>
+                        {showTeamFilterDropdown && (
+                            <div className="lp-scroll absolute left-0 top-full z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl">
+                                <button
+                                    type="button"
+                                    onClick={() => { setTeamFilterUserId(null); setShowTeamFilterDropdown(false) }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
+                                >
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--color-line-soft)] text-[var(--color-fg-subtle)]">
+                                        <PeopleIcon />
+                                    </span>
+                                    <span>All people</span>
+                                    {!teamFilterUserId && <span className="ml-auto text-[var(--color-fg-subtle)]">✓</span>}
+                                </button>
+                                {teamPeopleList.length > 0 && (
+                                    <div className="border-t border-[var(--color-line-soft)]" />
+                                )}
+                                {teamPeopleList.map(p => {
+                                    const isMe = p.id === user?.id
+                                    const initial = (p.first_name?.[0] || 'U').toUpperCase()
+                                    const isActive = teamFilterUserId === p.id
+                                    return (
+                                        <button
+                                            key={p.id}
+                                            type="button"
+                                            onClick={() => { setTeamFilterUserId(p.id); setShowTeamFilterDropdown(false) }}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
+                                        >
+                                            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold ${isMe ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black' : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'}`}>
+                                                {initial}
+                                            </span>
+                                            <span className="truncate">{isMe ? `${p.first_name} (you)` : p.first_name}</span>
+                                            {isActive && <span className="ml-auto text-[var(--color-fg-subtle)]">✓</span>}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
                 <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                    {teamMessages.filter(m => m.sender_type === 'user').length} messages
+                    {teamFilterUserId ? `${teamShownCount} of ${teamTotalCount}` : `${teamShownCount}`} messages
                 </span>
             </div>
             <div ref={teamScrollRef} className="lp-scroll flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -1478,18 +1595,87 @@ function Chat({ chatId }) {
     )
 
     /* ---------- Models pane (right) ---------- */
+    const workspaceFilterLLM = workspaceFilterLLMId
+        ? invitedLLMs.find(l => l.id === workspaceFilterLLMId)
+        : null
+    const workspaceFilterColor = workspaceFilterLLM ? getLLMColor(workspaceFilterLLM.display_number) : null
     const modelsPane = (
         <section className="flex min-h-0 flex-1 flex-col border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:border-l">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                    Workspace
-                </span>
-                <button
-                    onClick={() => setInviteLLMpop(true)}
-                    className="text-[11px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
-                >
-                    + Invite model
-                </button>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                        Workspace
+                    </span>
+                    <div className="relative" data-filter="workspace">
+                        <button
+                            type="button"
+                            onClick={() => setShowWorkspaceFilterDropdown(v => !v)}
+                            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] transition-colors ${
+                                workspaceFilterLLMId
+                                    ? `${workspaceFilterColor?.softBorder || 'border-[var(--color-line)]'} ${workspaceFilterColor?.softBg || 'bg-[var(--color-surface-2)]'} ${workspaceFilterColor?.text || 'text-[var(--color-fg)]'}`
+                                    : 'border-[var(--color-line-soft)] bg-transparent text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-muted)]'
+                            }`}
+                            title="Filter by AI"
+                        >
+                            <FilterIcon />
+                            <span className="max-w-[8rem] truncate">
+                                {workspaceFilterLLM ? workspaceFilterLLM.display_name : 'All models'}
+                            </span>
+                            <span className="text-[8px] leading-none">▾</span>
+                        </button>
+                        {showWorkspaceFilterDropdown && (
+                            <div className="lp-scroll absolute left-0 top-full z-30 mt-1 max-h-72 w-60 overflow-y-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl">
+                                <button
+                                    type="button"
+                                    onClick={() => { setWorkspaceFilterLLMId(null); setShowWorkspaceFilterDropdown(false) }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
+                                >
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--color-line-soft)] text-[var(--color-fg-subtle)]">
+                                        <BotIcon />
+                                    </span>
+                                    <span>All models</span>
+                                    {!workspaceFilterLLMId && <span className="ml-auto text-[var(--color-fg-subtle)]">✓</span>}
+                                </button>
+                                {invitedLLMs.length > 0 && (
+                                    <div className="border-t border-[var(--color-line-soft)]" />
+                                )}
+                                {invitedLLMs.map(llm => {
+                                    const c = getLLMColor(llm.display_number)
+                                    const isActive = workspaceFilterLLMId === llm.id
+                                    return (
+                                        <button
+                                            key={llm.id}
+                                            type="button"
+                                            onClick={() => { setWorkspaceFilterLLMId(llm.id); setShowWorkspaceFilterDropdown(false) }}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
+                                        >
+                                            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold ${c.avatarBg} ${c.avatarText}`}>
+                                                {getLLMInitials(llm.display_name)}
+                                            </span>
+                                            <span className="truncate">{llm.display_name}</span>
+                                            <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">
+                                                {isActive ? '✓' : `#${llm.display_number}`}
+                                            </span>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="flex items-center gap-3">
+                    {workspaceFilterLLMId && (
+                        <span className="text-[10px] text-[var(--color-fg-subtle)]">
+                            {modelMessages.filter(m => m.kind !== 'join').length} of {modelMessagesAll.filter(m => m.kind !== 'join').length}
+                        </span>
+                    )}
+                    <button
+                        onClick={() => setInviteLLMpop(true)}
+                        className="text-[11px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                    >
+                        + Invite model
+                    </button>
+                </div>
             </div>
 
             <div ref={modelsScrollRef} className="lp-scroll flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -2074,6 +2260,13 @@ function PeopleIcon() {
             <circle cx="9" cy="7" r="4" />
             <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
             <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+    )
+}
+function FilterIcon() {
+    return (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
         </svg>
     )
 }
