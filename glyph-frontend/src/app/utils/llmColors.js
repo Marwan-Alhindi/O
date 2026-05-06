@@ -1,3 +1,5 @@
+import { findFoundationModel, findSpecialist } from "./modelCatalog";
+
 // Stable color identity for each LLM in a chat.
 // We pick by display_number so the same LLM keeps the same color
 // across renders, sessions, and panes.
@@ -198,6 +200,12 @@ export function getLLMInitials(displayName) {
 }
 
 export function modelTypeLabel(modelType) {
+  const specialist = findSpecialist(modelType);
+  if (specialist) return specialist.label;
+
+  const foundationModel = findFoundationModel(modelType);
+  if (foundationModel) return foundationModel.label;
+
   switch (modelType) {
     case "openai":
       return "GPT-4o";
