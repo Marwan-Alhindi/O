@@ -1,59 +1,167 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { getLLMColor } from "../utils/llmColors"
+import { findMentions } from "../utils/mentions"
 
 const COLLAPSE_THRESHOLD = 320
 
-function Message({ text, isMe = false, invitedLLMs = [] }) {
+function Message({
+    text,
+    isMe = false,
+    invitedLLMs = [],
+    deletedAt = null,
+    editedAt = null,
+    canEdit = false,
+    onEdit = null,
+    onDelete = null,
+}) {
     const [expanded, setExpanded] = useState(false)
+    const [editing, setEditing] = useState(false)
+    const [draft, setDraft] = useState(text || "")
+    const [saving, setSaving] = useState(false)
+    const inputRef = useRef(null)
+
+    const isDeleted = !!deletedAt
+    const isEdited = !!editedAt
     const isLong = (text || '').length > COLLAPSE_THRESHOLD
 
-    // Build mention map (lowercase name -> color helper)
-    const mentionMap = useMemo(() => {
-        const m = {}
-        for (const llm of invitedLLMs) {
-            m[llm.display_name.toLowerCase()] = getLLMColor(llm.display_number)
-        }
-        return m
-    }, [invitedLLMs])
+    useEffect(() => { if (!editing) setDraft(text || "") }, [text, editing])
 
-    // Split text into segments, color @mentions
+    useEffect(() => {
+        if (editing && inputRef.current) {
+            inputRef.current.focus()
+            const v = inputRef.current.value
+            inputRef.current.setSelectionRange(v.length, v.length)
+        }
+    }, [editing])
+
+    // Split text into segments, colour @mentions for known LLMs.
     const segments = useMemo(() => {
         if (!text) return []
+        const mentions = findMentions(text, invitedLLMs)
         const parts = []
-        const regex = /(@\S+)/g
-        let last = 0
-        let match
-        while ((match = regex.exec(text)) !== null) {
-            if (match.index > last) parts.push({ type: 'text', value: text.slice(last, match.index) })
-            const handle = match[0].slice(1).toLowerCase()
+        let cursor = 0
+        for (const m of mentions) {
+            if (m.start > cursor) parts.push({ type: 'text', value: text.slice(cursor, m.start) })
             parts.push({
                 type: 'mention',
-                value: match[0],
-                color: mentionMap[handle] || null,
+                value: m.raw,
+                color: getLLMColor(m.llm.display_number),
             })
-            last = match.index + match[0].length
+            cursor = m.end
         }
-        if (last < text.length) parts.push({ type: 'text', value: text.slice(last) })
+        if (cursor < text.length) parts.push({ type: 'text', value: text.slice(cursor) })
         return parts
-    }, [text, mentionMap])
+    }, [text, invitedLLMs])
+
+    if (isDeleted) {
+        return (
+            <div
+                className={`whitespace-pre-wrap break-words rounded-2xl border px-3.5 py-2 text-sm italic leading-relaxed text-[var(--color-fg-subtle)] ${
+                    isMe
+                        ? 'bg-[var(--color-surface-3)]/60 border-white/[0.05]'
+                        : 'bg-[var(--color-surface-2)]/60 border-[var(--color-line-soft)]'
+                }`}
+            >
+                This message was deleted
+            </div>
+        )
+    }
+
+    if (editing) {
+        const commit = async () => {
+            const next = draft.trim()
+            if (!next || next === text) { setEditing(false); return }
+            setSaving(true)
+            const ok = await onEdit?.(next)
+            setSaving(false)
+            if (ok !== false) setEditing(false)
+        }
+        return (
+            <div
+                className={`rounded-2xl border px-3.5 py-2 text-sm leading-relaxed ${
+                    isMe
+                        ? 'bg-[var(--color-surface-3)] border-white/[0.07]'
+                        : 'bg-[var(--color-surface-2)] border-[var(--color-line-soft)]'
+                }`}
+            >
+                <textarea
+                    ref={inputRef}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            commit()
+                        } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            setEditing(false)
+                            setDraft(text || "")
+                        }
+                    }}
+                    rows={Math.min(8, Math.max(1, draft.split('\n').length))}
+                    disabled={saving}
+                    className="block w-full resize-none bg-transparent text-sm text-[var(--color-fg)] outline-none placeholder:text-[var(--color-fg-subtle)] disabled:opacity-50"
+                />
+                <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px]">
+                    <span className="mr-auto text-[var(--color-fg-subtle)]">⏎ to save · esc to cancel</span>
+                    <button
+                        onClick={() => { setEditing(false); setDraft(text || "") }}
+                        disabled={saving}
+                        className="rounded px-2 py-0.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)] disabled:opacity-50"
+                    >Cancel</button>
+                    <button
+                        onClick={commit}
+                        disabled={saving || !draft.trim()}
+                        className="rounded bg-white px-2 py-0.5 font-medium text-black hover:bg-[var(--color-brand)] disabled:opacity-50"
+                    >{saving ? 'Saving…' : 'Save'}</button>
+                </div>
+            </div>
+        )
+    }
 
     return (
-        <div
-            className={`whitespace-pre-wrap break-words rounded-2xl border px-3.5 py-2 text-sm leading-relaxed text-[var(--color-fg)] ${
-                isMe
-                    ? 'bg-[var(--color-surface-3)] border-white/[0.07]'
-                    : 'bg-[var(--color-surface-2)] border-[var(--color-line-soft)]'
-            }`}
-        >
-            {(!expanded && isLong ? renderSegments(segments, COLLAPSE_THRESHOLD) : renderSegments(segments, Infinity))}
-            {!expanded && isLong && <span className="text-[var(--color-fg-subtle)]">… </span>}
-            {isLong && (
-                <button
-                    onClick={() => setExpanded(!expanded)}
-                    className="ml-1 text-xs text-[var(--color-fg-muted)] underline-offset-2 hover:underline"
-                >
-                    {expanded ? 'show less' : 'show more'}
-                </button>
+        <div className="group/msg relative">
+            <div
+                className={`whitespace-pre-wrap break-words rounded-2xl border px-3.5 py-2 text-sm leading-relaxed text-[var(--color-fg)] ${
+                    isMe
+                        ? 'bg-[var(--color-surface-3)] border-white/[0.07]'
+                        : 'bg-[var(--color-surface-2)] border-[var(--color-line-soft)]'
+                }`}
+            >
+                {(!expanded && isLong ? renderSegments(segments, COLLAPSE_THRESHOLD) : renderSegments(segments, Infinity))}
+                {!expanded && isLong && <span className="text-[var(--color-fg-subtle)]">… </span>}
+                {isLong && (
+                    <button
+                        onClick={() => setExpanded(!expanded)}
+                        className="ml-1 text-xs text-[var(--color-fg-muted)] underline-offset-2 hover:underline"
+                    >
+                        {expanded ? 'show less' : 'show more'}
+                    </button>
+                )}
+                {isEdited && (
+                    <span className="ml-1.5 text-[10px] text-[var(--color-fg-subtle)]" title={`Edited ${new Date(editedAt).toLocaleString()}`}>
+                        (edited)
+                    </span>
+                )}
+            </div>
+
+            {canEdit && (
+                <div className={`absolute -top-2 ${isMe ? 'left-1' : 'right-1'} flex gap-0.5 rounded-md border border-[var(--color-line-soft)] bg-[var(--color-surface-1)] p-0.5 opacity-0 shadow transition-opacity group-hover/msg:opacity-100`}>
+                    <button
+                        onClick={() => setEditing(true)}
+                        className="rounded p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
+                        title="Edit message"
+                    >
+                        <PencilIcon size={11} />
+                    </button>
+                    <button
+                        onClick={() => onDelete?.()}
+                        className="rounded p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-rose-400"
+                        title="Delete message"
+                    >
+                        <TrashIcon size={11} />
+                    </button>
+                </div>
             )}
         </div>
     )
@@ -92,6 +200,21 @@ function renderSegments(segments, maxChars) {
         }
     }
     return out
+}
+
+function PencilIcon({ size = 14 }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+        </svg>
+    )
+}
+function TrashIcon({ size = 14 }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+        </svg>
+    )
 }
 
 export default Message

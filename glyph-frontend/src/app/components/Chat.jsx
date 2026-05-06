@@ -11,6 +11,7 @@ import Agent from "./Agent"
 import { supabase, API_BASE } from "../../services/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { getLLMColor, getLLMInitials, modelTypeLabel } from "../utils/llmColors"
+import { findMentions, isMentionPrefix } from "../utils/mentions"
 
 const GROUP_KEYS = {
     chat: ['team', 'models', 'files'],
@@ -31,6 +32,8 @@ function Chat({ chatId }) {
     const [invitedLLMs, setInvitedLLMs] = useState([])
     const [inputText, setInputText] = useState("")
     const [InviteLLMpop, setInviteLLMpop] = useState(false)
+    const [deleteMessageTarget, setDeleteMessageTarget] = useState(null)
+    const [deleteMessagePending, setDeleteMessagePending] = useState(false)
     const [showMentionDropdown, setShowMentionDropdown] = useState(false)
     const [mentionFilter, setMentionFilter] = useState("")
     const [contextLLM, setContextLLM] = useState(null)
@@ -188,6 +191,17 @@ function Chat({ chatId }) {
                 }
             )
             .on('postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
+                (payload) => {
+                    const updated = payload.new
+                    if (!updated?.id) return
+                    setMessages(prev => prev.map(m => m.id === updated.id
+                        ? { ...m, content: updated.content, deleted_at: updated.deleted_at, edited_at: updated.edited_at }
+                        : m
+                    ))
+                }
+            )
+            .on('postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'invited_llms', filter: `chat_id=eq.${chatId}` },
                 async (payload) => {
                     const { data: fullLlm } = await supabase
@@ -305,14 +319,16 @@ function Chat({ chatId }) {
         const value = e.target.value
         setInputText(value)
         const lastAtIndex = value.lastIndexOf('@')
-        if (lastAtIndex !== -1) {
-            const afterAt = value.slice(lastAtIndex + 1)
-            if (!afterAt.includes(' ')) {
-                setMentionFilter(afterAt)
-                setShowMentionDropdown(true)
-            } else {
-                setShowMentionDropdown(false)
-            }
+        if (lastAtIndex === -1) {
+            setShowMentionDropdown(false)
+            return
+        }
+        const afterAt = value.slice(lastAtIndex + 1)
+        // Keep the dropdown open while the partial could still grow into a known
+        // display name — handles multi-word names like "Time Manager".
+        if (afterAt.length === 0 || isMentionPrefix(afterAt, invitedLLMs)) {
+            setMentionFilter(afterAt)
+            setShowMentionDropdown(true)
         } else {
             setShowMentionDropdown(false)
         }
@@ -358,69 +374,123 @@ function Chat({ chatId }) {
 
         setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg])
 
-        const mentionRegex = /@(\S+)/g
-        const mentions = []
-        let match
-        while ((match = mentionRegex.exec(text)) !== null) mentions.push(match[1])
-
-        let targetLLMs = []
-        if (mentions.length > 0) {
-            const firstMentioned = invitedLLMs.find(llm => llm.display_name === mentions[0])
-            if (firstMentioned) targetLLMs = [firstMentioned]
-        }
+        const mentioned = findMentions(text, invitedLLMs)
+        const targetLLMs = mentioned.length > 0 ? [mentioned[0].llm] : []
 
         for (const llm of targetLLMs) {
-            setPendingLLMs(prev => ({ ...prev, [llm.id]: { text: "" } }))
-            try {
-                const res = await fetch(`${API_BASE}/askLLM`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
-                    body: JSON.stringify({ chat_id: chatId, llm_id: llm.id })
-                })
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}))
-                    console.error("Backend ask error:", err)
-                    alert("LLM error: " + (err.detail || res.statusText))
-                    setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
-                    continue
-                }
-                setMobileTab("models")
-
-                // Read SSE stream (data: {...}\n\n events)
-                const reader = res.body.getReader()
-                const decoder = new TextDecoder()
-                let buffer = ""
-                while (true) {
-                    const { done, value } = await reader.read()
-                    if (done) break
-                    buffer += decoder.decode(value, { stream: true })
-                    const events = buffer.split("\n\n")
-                    buffer = events.pop() || ""
-                    for (const evt of events) {
-                        if (!evt.startsWith("data: ")) continue
-                        let data
-                        try { data = JSON.parse(evt.slice(6)) } catch { continue }
-                        if (data.type === "token") {
-                            setPendingLLMs(prev => {
-                                const cur = prev[llm.id]
-                                if (!cur) return prev
-                                return { ...prev, [llm.id]: { ...cur, text: cur.text + data.content } }
-                            })
-                        } else if (data.type === "error") {
-                            console.error("Stream error:", data.detail)
-                            alert("LLM error: " + (data.detail || "stream failed"))
-                            setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
-                        }
-                        // 'tool' and 'done' events: realtime push will deliver the
-                        // finalized message and clear the pending state.
-                    }
-                }
-            } catch (err) {
-                console.error("Ask fetch error:", err)
-                alert(`Could not reach backend at ${API_BASE}: ${err.message}`)
-                setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
-            }
+            await streamLLMReply(llm)
         }
+    }
+
+    async function streamLLMReply(llm, replaceMessageId = null) {
+        setPendingLLMs(prev => ({ ...prev, [llm.id]: { text: "", replaceMessageId } }))
+        try {
+            const res = await fetch(`${API_BASE}/askLLM`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    llm_id: llm.id,
+                    ...(replaceMessageId ? { replace_message_id: replaceMessageId } : {}),
+                })
+            })
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                console.error("Backend ask error:", err)
+                alert("LLM error: " + (err.detail || res.statusText))
+                setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                return
+            }
+            setMobileTab("models")
+
+            // Read SSE stream (data: {...}\n\n events)
+            const reader = res.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ""
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                buffer += decoder.decode(value, { stream: true })
+                const events = buffer.split("\n\n")
+                buffer = events.pop() || ""
+                for (const evt of events) {
+                    if (!evt.startsWith("data: ")) continue
+                    let data
+                    try { data = JSON.parse(evt.slice(6)) } catch { continue }
+                    if (data.type === "token") {
+                        setPendingLLMs(prev => {
+                            const cur = prev[llm.id]
+                            if (!cur) return prev
+                            return { ...prev, [llm.id]: { ...cur, text: cur.text + data.content } }
+                        })
+                    } else if (data.type === "error") {
+                        console.error("Stream error:", data.detail)
+                        alert("LLM error: " + (data.detail || "stream failed"))
+                        setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                    } else if (data.type === "done") {
+                        // For new messages the INSERT realtime push also clears
+                        // pending — but for regenerations the backend UPDATEs the
+                        // existing row (no INSERT), so 'done' is the reliable signal.
+                        setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                    }
+                    // 'tool' events: client just renders progress; nothing to do here.
+                }
+            }
+        } catch (err) {
+            console.error("Ask fetch error:", err)
+            alert(`Could not reach backend at ${API_BASE}: ${err.message}`)
+            setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+        }
+    }
+
+    async function handleEditMessage(msg, newContent) {
+        const nowIso = new Date().toISOString()
+        const prevSnapshot = { content: msg.content, edited_at: msg.edited_at }
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: newContent, edited_at: nowIso } : m))
+        const { error } = await supabase
+            .from("messages")
+            .update({ content: newContent, edited_at: nowIso })
+            .eq("id", msg.id)
+            .eq("sender_user_id", user.id)
+        if (error) {
+            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...prevSnapshot } : m))
+            alert("Failed to edit message: " + error.message)
+            return false
+        }
+        return true
+    }
+
+    function handleDeleteMessage(msg) {
+        setDeleteMessageTarget(msg)
+    }
+
+    async function confirmDeleteMessage() {
+        const msg = deleteMessageTarget
+        if (!msg) return
+        setDeleteMessagePending(true)
+        const nowIso = new Date().toISOString()
+        const prevDeletedAt = msg.deleted_at
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deleted_at: nowIso } : m))
+        const { error } = await supabase
+            .from("messages")
+            .update({ deleted_at: nowIso })
+            .eq("id", msg.id)
+            .eq("sender_user_id", user.id)
+        if (error) {
+            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deleted_at: prevDeletedAt } : m))
+            alert("Failed to delete message: " + error.message)
+            setDeleteMessagePending(false)
+            return
+        }
+        setDeleteMessageTarget(null)
+        setDeleteMessagePending(false)
+    }
+
+    async function handleRegenerateAI(msg) {
+        const llm = invitedLLMs.find(l => l.id === msg.sender_llm_id)
+        if (!llm) return
+        if (pendingLLMs[llm.id]) return
+        await streamLLMReply(llm, msg.id)
     }
 
     function openContext(llmId) {
@@ -896,7 +966,16 @@ function Chat({ chatId }) {
                                 </div>
                                 <div className={`min-w-0 max-w-[88%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
                                     <span className={`mb-1 text-[11px] text-[var(--color-fg-subtle)] ${isMe ? 'text-right' : ''}`}>{displayName}</span>
-                                    <Message text={msg.content} isMe={isMe} invitedLLMs={invitedLLMs} />
+                                    <Message
+                                        text={msg.content}
+                                        isMe={isMe}
+                                        invitedLLMs={invitedLLMs}
+                                        deletedAt={msg.deleted_at}
+                                        editedAt={msg.edited_at}
+                                        canEdit={isMe && !msg.deleted_at}
+                                        onEdit={(next) => handleEditMessage(msg, next)}
+                                        onDelete={() => handleDeleteMessage(msg)}
+                                    />
                                 </div>
                             </div>
                         )
@@ -942,6 +1021,15 @@ function Chat({ chatId }) {
                                 )
                             }
 
+                            // If this exact message is being regenerated, render
+                            // the streaming UI in-place so the user sees the
+                            // single bubble transition through thinking → tokens
+                            // → final content.
+                            const pendingForLlm = pendingLLMs[msg.sender_llm_id]
+                            const isRegenerating = pendingForLlm?.replaceMessageId === msg.id
+                            const streamingText = isRegenerating ? (pendingForLlm?.text || "") : ""
+                            const hasStreamingText = streamingText.length > 0
+
                             return (
                                 <article
                                     key={msg.id}
@@ -964,19 +1052,54 @@ function Chat({ chatId }) {
                                                 </span>
                                             </span>
                                         </button>
-                                        <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {isRegenerating ? (
+                                                <span className="text-[10px] text-[var(--color-fg-subtle)]">
+                                                    {hasStreamingText ? 'streaming…' : 'thinking…'}
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleRegenerateAI(msg)}
+                                                        disabled={!!pendingLLMs[msg.sender_llm_id]}
+                                                        className="rounded p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)] disabled:opacity-40"
+                                                        title="Regenerate reply"
+                                                    >
+                                                        <RefreshIcon size={12} />
+                                                    </button>
+                                                    <span className="text-[10px] text-[var(--color-fg-subtle)]">
+                                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
                                     </header>
-                                    <div className="px-4 py-3">
-                                        <AIMessage text={msg.content} />
-                                    </div>
+                                    {isRegenerating ? (
+                                        hasStreamingText ? (
+                                            <div className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-[var(--color-fg)]">
+                                                {streamingText}
+                                                <span className="ml-0.5 inline-block h-3.5 w-px translate-y-0.5 animate-pulse bg-[var(--color-fg-subtle)]" />
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5 px-4 py-4">
+                                                <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} />
+                                                <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.16s' }} />
+                                                <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.32s' }} />
+                                            </div>
+                                        )
+                                    ) : (
+                                        <div className="px-4 py-3">
+                                            <AIMessage text={msg.content} />
+                                        </div>
+                                    )}
                                 </article>
                             )
                         })}
 
-                        {/* Pending placeholders — thinking dots until first token, streaming text after */}
+                        {/* New-reply pending bubbles. Regen-pending is rendered
+                            in-place above, so we skip entries with replaceMessageId. */}
                         {Object.entries(pendingLLMs).map(([llmId, state]) => {
+                            if (state?.replaceMessageId) return null
                             const llm = invitedLLMs.find(l => l.id === llmId)
                             if (!llm) return null
                             const c = getLLMColor(llm.display_number)
@@ -1084,6 +1207,42 @@ function Chat({ chatId }) {
     return (
         <div className="relative flex h-full w-full flex-col bg-[var(--color-canvas)]">
             {/* Modals */}
+            {deleteMessageTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="w-full max-w-sm mx-4 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-1)] p-6 shadow-2xl">
+                        <div className="mb-3 flex items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-rose-400">
+                                <TrashIcon />
+                            </span>
+                            <div className="min-w-0">
+                                <p className="text-base font-semibold text-[var(--color-fg)]">Delete this message?</p>
+                                <p className="truncate text-xs text-[var(--color-fg-muted)]">
+                                    {(deleteMessageTarget.content || "").slice(0, 80) || "(empty)"}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="mb-5 text-sm text-[var(--color-fg-muted)]">
+                            Other participants will see a tombstone where this message used to be. The model won't see it on regeneration.
+                        </p>
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => !deleteMessagePending && setDeleteMessageTarget(null)}
+                                disabled={deleteMessagePending}
+                                className="rounded-lg px-3 py-2 text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)] disabled:opacity-40"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDeleteMessage}
+                                disabled={deleteMessagePending}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400 disabled:opacity-40"
+                            >
+                                {deleteMessagePending ? 'Deleting…' : 'Delete message'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {InviteLLMpop && (
                 <InviteLLM
                     onClose={() => setInviteLLMpop(false)}
@@ -1101,6 +1260,7 @@ function Chat({ chatId }) {
                 <LLMContext
                     llm={contextLLM}
                     messages={messages}
+                    invitedLLMs={invitedLLMs}
                     onClose={() => setContextLLM(null)}
                 />
             )}
@@ -1256,6 +1416,16 @@ function SendIcon() {
         </svg>
     )
 }
+function RefreshIcon({ size = 14 }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10" />
+            <polyline points="1 20 1 14 7 14" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+            <path d="M20.49 15A9 9 0 0 1 5.64 18.36L1 14" />
+        </svg>
+    )
+}
 function BotIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1284,6 +1454,17 @@ function PeopleIcon() {
             <circle cx="9" cy="7" r="4" />
             <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
             <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+    )
+}
+function TrashIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
         </svg>
     )
 }
