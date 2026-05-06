@@ -1,54 +1,26 @@
-"""Agent tool definitions and executors.
+"""Agent tools — LangChain `@tool`-decorated functions.
 
-Tool functions take a `ctx` dict with:
-  chat_id, calling_llm_id, user_id, supabase
-
-This module does not import from main.py; dependencies are injected via ctx
-to avoid circular imports.
+The chat agent binds these tools at graph build time. Both current tools
+(web_search, create_pdf) are self-contained and don't need per-request
+ctx (chat_id, user_id). When future tools need that, plumb it via
+`langchain.agents.create_agent`'s `context_schema=` parameter and read it
+from the runtime inside each tool.
 """
 
 import os
 import re
 import uuid
 
+from langchain_core.tools import tool
+
+
 PDFS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdfs")
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE", "http://localhost:8000").rstrip("/")
 
 
-TOOL_SCHEMAS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the web for current information. Use when the answer depends on recent events or facts outside your training data.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query."}
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_pdf",
-            "description": "Generate a real downloadable PDF from text/markdown content. Use this when the user asks you to create, export, or download a PDF. Returns a URL you MUST include in your reply as a markdown link so the user can download it.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Title shown at the top of the PDF and used for the filename."},
-                    "content": {"type": "string", "description": "The body of the PDF. Plain text with blank lines between paragraphs; supports basic inline markdown (**bold**, *italic*)."},
-                },
-                "required": ["title", "content"],
-            },
-        },
-    },
-]
-
-
-def run_web_search(ctx, query):
+@tool
+def web_search(query: str) -> str:
+    """Search the web for current information. Use when the answer depends on recent events or facts outside your training data."""
     try:
         from ddgs import DDGS
         results = DDGS().text(query, max_results=5)
@@ -67,7 +39,14 @@ def run_web_search(ctx, query):
     return "\n".join(lines)
 
 
-def run_create_pdf(ctx, title, content):
+@tool
+def create_pdf(title: str, content: str) -> str:
+    """Generate a real downloadable PDF from text/markdown content. Use this when the user asks you to create, export, or download a PDF. Returns a URL you MUST include in your reply as a markdown link so the user can download it.
+
+    Args:
+        title: Title shown at the top of the PDF and used for the filename.
+        content: The body of the PDF. Plain text with blank lines between paragraphs; supports basic inline markdown (**bold**, *italic*).
+    """
     try:
         from reportlab.lib.pagesizes import LETTER
         from reportlab.lib.styles import getSampleStyleSheet
@@ -103,19 +82,6 @@ def run_create_pdf(ctx, title, content):
     return f"PDF created at {url}. Include this URL in your reply as a markdown link like [Download {title}]({url}) so the user can download it."
 
 
-TOOL_DISPATCH = {
-    "web_search": run_web_search,
-    "create_pdf": run_create_pdf,
-}
-
-
-def execute_tool(name, args, ctx):
-    fn = TOOL_DISPATCH.get(name)
-    if not fn:
-        return f"Unknown tool: {name}"
-    try:
-        return fn(ctx=ctx, **args)
-    except TypeError as e:
-        return f"Tool {name} called with bad arguments: {e}"
-    except Exception as e:
-        return f"Tool {name} failed: {e}"
+def get_tools():
+    """Return the tool list used by the chat agent."""
+    return [web_search, create_pdf]

@@ -5,12 +5,9 @@ Endpoints:
   GET    /invitations?chat_id=...                      list pending invites
   DELETE /invitations/{id}                             revoke a pending invite
   POST   /invitations/accept                           redeem token (auth required)
+  POST   /invitations/claim_pending                    auto-accept all matching pending invites for the user
   GET    /invitations/peek?token=...                   public preview for signup page
   PATCH  /chat_participants/{id}/can_invite            owner toggles delegated invite power
-
-Imports `supabase` and `get_current_user` from main at function call time to
-avoid circular imports. The router is included from main.py at the bottom of
-that module, after both names are defined.
 """
 
 import os
@@ -22,6 +19,9 @@ import resend
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
+from config import supabase
+from auth import get_current_user
+
 
 resend.api_key = os.getenv("RESEND_API_KEY")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "Glyph <onboarding@resend.dev>")
@@ -30,16 +30,6 @@ INVITATION_TTL = timedelta(days=7)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 router = APIRouter()
-
-
-def _supabase():
-    from main import supabase
-    return supabase
-
-
-def _auth(authorization: str) -> str:
-    from main import get_current_user
-    return get_current_user(authorization)
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +44,7 @@ def verify_can_invite(user_id: str, chat_id: str) -> dict:
     added. A missing can_invite key is treated as False, so non-owners are still
     correctly blocked when the column hasn't been migrated yet.
     """
-    sb = _supabase()
+    sb = supabase
     result = (
         sb.table("chat_participants")
         .select("*")
@@ -73,7 +63,7 @@ def verify_can_invite(user_id: str, chat_id: str) -> dict:
 
 def get_user_email(user_id: str) -> str:
     """Look up a user's email via Supabase auth admin. Returns lowercased email."""
-    sb = _supabase()
+    sb = supabase
     try:
         resp = sb.auth.admin.get_user_by_id(user_id)
     except Exception as e:
@@ -150,9 +140,9 @@ class CanInviteRequest(BaseModel):
 
 @router.post("/invitations")
 def create_invitation(body: CreateInvitationRequest, authorization: str = Header()):
-    user_id = _auth(authorization)
+    user_id = get_current_user(authorization)
     verify_can_invite(user_id, body.chat_id)
-    sb = _supabase()
+    sb = supabase
 
     email = body.email.strip().lower()
     if not EMAIL_RE.match(email):
@@ -206,9 +196,9 @@ def create_invitation(body: CreateInvitationRequest, authorization: str = Header
 
 @router.get("/invitations")
 def list_invitations(chat_id: str, authorization: str = Header()):
-    user_id = _auth(authorization)
+    user_id = get_current_user(authorization)
     verify_can_invite(user_id, chat_id)
-    sb = _supabase()
+    sb = supabase
 
     now_iso = datetime.now(timezone.utc).isoformat()
     result = (
@@ -226,8 +216,8 @@ def list_invitations(chat_id: str, authorization: str = Header()):
 
 @router.delete("/invitations/{invitation_id}")
 def revoke_invitation(invitation_id: str, authorization: str = Header()):
-    user_id = _auth(authorization)
-    sb = _supabase()
+    user_id = get_current_user(authorization)
+    sb = supabase
 
     inv_result = sb.table("chat_invitations").select("*").eq("id", invitation_id).single().execute()
     invitation = inv_result.data
@@ -261,9 +251,9 @@ def claim_pending_invitations(authorization: str = Header()):
     invited (or who first logged in with a different account) still land in the
     chats they were invited to, without having to re-click the email link.
     """
-    user_id = _auth(authorization)
+    user_id = get_current_user(authorization)
     user_email = get_user_email(user_id)
-    sb = _supabase()
+    sb = supabase
 
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
@@ -306,9 +296,9 @@ def claim_pending_invitations(authorization: str = Header()):
 
 @router.post("/invitations/accept")
 def accept_invitation(body: AcceptInvitationRequest, authorization: str = Header()):
-    user_id = _auth(authorization)
+    user_id = get_current_user(authorization)
     user_email = get_user_email(user_id)
-    sb = _supabase()
+    sb = supabase
 
     inv_result = sb.table("chat_invitations").select("*").eq("token", body.token).execute()
     rows = inv_result.data or []
@@ -353,7 +343,7 @@ def accept_invitation(body: AcceptInvitationRequest, authorization: str = Header
 @router.get("/invitations/peek")
 def peek_invitation(token: str):
     """Public — minimal context so the signup page can show 'You're joining {chat_name}' and prefill email."""
-    sb = _supabase()
+    sb = supabase
     inv_result = sb.table("chat_invitations").select("*").eq("token", token).execute()
     rows = inv_result.data or []
     if not rows:
@@ -382,8 +372,8 @@ def peek_invitation(token: str):
 
 @router.patch("/chat_participants/{participant_id}/can_invite")
 def update_can_invite(participant_id: str, body: CanInviteRequest, authorization: str = Header()):
-    user_id = _auth(authorization)
-    sb = _supabase()
+    user_id = get_current_user(authorization)
+    sb = supabase
 
     target_result = sb.table("chat_participants").select("*").eq("id", participant_id).single().execute()
     target = target_result.data
