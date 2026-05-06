@@ -558,7 +558,7 @@ function EmptyLanding({ firstName, value, setValue, onSubmit, onCreate }) {
                         <div className="flex items-center justify-between border-t border-[var(--color-line-soft)] px-2 py-1.5">
                             <div className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)] px-1">
                                 <span>Tip:</span>
-                                <span>type @ in the chat to mention a model</span>
+                                <span>type @ in the chat to mention people or models</span>
                             </div>
                             <button
                                 onClick={onSubmit}

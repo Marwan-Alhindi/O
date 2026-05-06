@@ -8,6 +8,7 @@ function Message({
     text,
     isMe = false,
     invitedLLMs = [],
+    profilesById = {},
     deletedAt = null,
     editedAt = null,
     canEdit = false,
@@ -34,10 +35,24 @@ function Message({
         }
     }, [editing])
 
-    // Split text into segments, colour @mentions for known LLMs.
+    // Split text into segments, colour @mentions for known LLMs and people.
     const segments = useMemo(() => {
         if (!text) return []
-        const mentions = findMentions(text, invitedLLMs)
+        const llmMentionables = (invitedLLMs || []).map(l => ({
+            id: l.id,
+            display_name: l.display_name,
+            kind: 'llm',
+            llm: l,
+        }))
+        const personMentionables = Object.values(profilesById || {})
+            .filter(p => p.first_name)
+            .map(p => ({
+                id: p.id,
+                display_name: p.first_name,
+                kind: 'person',
+                profile: p,
+            }))
+        const mentions = findMentions(text, [...personMentionables, ...llmMentionables])
         const parts = []
         let cursor = 0
         for (const m of mentions) {
@@ -45,13 +60,14 @@ function Message({
             parts.push({
                 type: 'mention',
                 value: m.raw,
-                color: getLLMColor(m.llm.display_number),
+                kind: m.kind,
+                color: m.kind === 'llm' ? getLLMColor(m.target.llm.display_number) : null,
             })
             cursor = m.end
         }
         if (cursor < text.length) parts.push({ type: 'text', value: text.slice(cursor) })
         return parts
-    }, [text, invitedLLMs])
+    }, [text, invitedLLMs, profilesById])
 
     if (isDeleted) {
         return (
@@ -179,11 +195,20 @@ function renderSegments(segments, maxChars) {
 
         if (seg.type === 'mention') {
             const color = seg.color
-            if (color) {
+            if (seg.kind === 'llm' && color) {
                 out.push(
                     <span
                         key={i}
                         className={`mx-0.5 inline-flex items-center rounded px-1 font-medium ${color.softBg} ${color.text}`}
+                    >
+                        {value}
+                    </span>
+                )
+            } else if (seg.kind === 'person') {
+                out.push(
+                    <span
+                        key={i}
+                        className="mx-0.5 inline-flex items-center rounded bg-[var(--color-surface-3)] px-1 font-medium text-[var(--color-fg)]"
                     >
                         {value}
                     </span>

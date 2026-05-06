@@ -315,6 +315,26 @@ function Chat({ chatId }) {
         }
     }
 
+    // Unified list of @-mentionables: invited LLMs + chat participants
+    // (excluding the current user — you don't @-mention yourself).
+    const mentionables = useMemo(() => {
+        const llms = invitedLLMs.map(l => ({
+            id: l.id,
+            display_name: l.display_name,
+            kind: 'llm',
+            llm: l,
+        }))
+        const people = Object.values(profilesById)
+            .filter(p => p.id !== user?.id && p.first_name)
+            .map(p => ({
+                id: p.id,
+                display_name: p.first_name,
+                kind: 'person',
+                profile: p,
+            }))
+        return [...people, ...llms]
+    }, [invitedLLMs, profilesById, user?.id])
+
     function handleInputChange(e) {
         const value = e.target.value
         setInputText(value)
@@ -326,7 +346,7 @@ function Chat({ chatId }) {
         const afterAt = value.slice(lastAtIndex + 1)
         // Keep the dropdown open while the partial could still grow into a known
         // display name — handles multi-word names like "Time Manager".
-        if (afterAt.length === 0 || isMentionPrefix(afterAt, invitedLLMs)) {
+        if (afterAt.length === 0 || isMentionPrefix(afterAt, mentionables)) {
             setMentionFilter(afterAt)
             setShowMentionDropdown(true)
         } else {
@@ -334,9 +354,9 @@ function Chat({ chatId }) {
         }
     }
 
-    function handleSelectMention(llm) {
+    function handleSelectMention(target) {
         const lastAtIndex = inputText.lastIndexOf('@')
-        const newText = inputText.slice(0, lastAtIndex) + `@${llm.display_name} `
+        const newText = inputText.slice(0, lastAtIndex) + `@${target.display_name} `
         setInputText(newText)
         setShowMentionDropdown(false)
         inputRef.current?.focus()
@@ -374,8 +394,9 @@ function Chat({ chatId }) {
 
         setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg])
 
-        const mentioned = findMentions(text, invitedLLMs)
-        const targetLLMs = mentioned.length > 0 ? [mentioned[0].llm] : []
+        // Only model mentions trigger a stream; person mentions stay in the team thread.
+        const mentioned = findMentions(text, mentionables).filter(m => m.kind === 'llm')
+        const targetLLMs = mentioned.length > 0 ? [mentioned[0].target] : []
 
         for (const llm of targetLLMs) {
             await streamLLMReply(llm)
@@ -699,9 +720,14 @@ function Chat({ chatId }) {
         }
     }, [openPanels, mobileTab, viewGroup])
 
-    const filteredLLMs = invitedLLMs.filter(llm =>
-        llm.display_name.toLowerCase().startsWith(mentionFilter.toLowerCase())
-    )
+    const filteredMentions = useMemo(() => {
+        const q = mentionFilter.toLowerCase()
+        const matches = mentionables.filter(m => m.display_name.toLowerCase().startsWith(q))
+        return {
+            people: matches.filter(m => m.kind === 'person'),
+            llms: matches.filter(m => m.kind === 'llm'),
+        }
+    }, [mentionables, mentionFilter])
 
     // Split messages into team (user + system) and models (llm)
     const { teamMessages, modelMessages } = useMemo(() => {
@@ -755,29 +781,73 @@ function Chat({ chatId }) {
     }
 
     /* ---------- Mention dropdown (rendered above input) ---------- */
+    const noMatches = filteredMentions.people.length === 0 && filteredMentions.llms.length === 0
     const mentionDropdown = showMentionDropdown && (
-        <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl">
-            {filteredLLMs.length === 0 && (
-                <div className="px-3 py-2 text-xs text-[var(--color-fg-subtle)]">No matches — invite a model below</div>
+        <div className="absolute bottom-full left-0 right-0 mb-2 max-h-80 overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl lp-scroll">
+            {noMatches && (
+                <div className="px-3 py-2 text-xs text-[var(--color-fg-subtle)]">No matches — invite someone below</div>
             )}
-            {filteredLLMs.map(llm => {
-                const c = getLLMColor(llm.display_number)
-                return (
-                    <button
-                        key={llm.id}
-                        className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-3)]"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => handleSelectMention(llm)}
-                    >
-                        <span className={`flex h-6 w-6 items-center justify-center rounded-full ${c.avatarBg} text-[10px] font-semibold ${c.avatarText}`}>
-                            {getLLMInitials(llm.display_name)}
-                        </span>
-                        <span className="text-[var(--color-fg)]">@{llm.display_name}</span>
-                        <span className="text-xs text-[var(--color-fg-subtle)]">· {modelTypeLabel(llm.model_type)}</span>
-                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">#{llm.display_number}</span>
-                    </button>
-                )
-            })}
+
+            {filteredMentions.people.length > 0 && (
+                <>
+                    <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                        People
+                    </div>
+                    {filteredMentions.people.map(m => {
+                        const isMe = m.id === user?.id
+                        const initial = (m.display_name[0] || 'U').toUpperCase()
+                        return (
+                            <button
+                                key={`person-${m.id}`}
+                                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-3)]"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => handleSelectMention(m)}
+                            >
+                                <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${
+                                    isMe
+                                        ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black'
+                                        : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'
+                                }`}>
+                                    {initial}
+                                </span>
+                                <span className="text-[var(--color-fg)]">@{m.display_name}</span>
+                                <span className="text-xs text-[var(--color-fg-subtle)]">· teammate</span>
+                            </button>
+                        )
+                    })}
+                </>
+            )}
+
+            {filteredMentions.llms.length > 0 && (
+                <>
+                    {filteredMentions.people.length > 0 && (
+                        <div className="border-t border-[var(--color-line-soft)]" />
+                    )}
+                    <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
+                        Models
+                    </div>
+                    {filteredMentions.llms.map(m => {
+                        const llm = m.llm
+                        const c = getLLMColor(llm.display_number)
+                        return (
+                            <button
+                                key={`llm-${m.id}`}
+                                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-3)]"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => handleSelectMention(m)}
+                            >
+                                <span className={`flex h-6 w-6 items-center justify-center rounded-full ${c.avatarBg} text-[10px] font-semibold ${c.avatarText}`}>
+                                    {getLLMInitials(llm.display_name)}
+                                </span>
+                                <span className="text-[var(--color-fg)]">@{llm.display_name}</span>
+                                <span className="text-xs text-[var(--color-fg-subtle)]">· {modelTypeLabel(llm.model_type)}</span>
+                                <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">#{llm.display_number}</span>
+                            </button>
+                        )
+                    })}
+                </>
+            )}
+
             <div className="border-t border-[var(--color-line-soft)]">
                 <button
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
@@ -806,7 +876,7 @@ function Chat({ chatId }) {
                     <textarea
                         ref={inputRef}
                         rows={1}
-                        placeholder="Message your team — type @ to mention a model"
+                        placeholder="Message your team — type @ to mention people or models"
                         value={inputText}
                         onChange={handleInputChange}
                         onKeyDown={(e) => {
@@ -970,6 +1040,7 @@ function Chat({ chatId }) {
                                         text={msg.content}
                                         isMe={isMe}
                                         invitedLLMs={invitedLLMs}
+                                        profilesById={profilesById}
                                         deletedAt={msg.deleted_at}
                                         editedAt={msg.edited_at}
                                         canEdit={isMe && !msg.deleted_at}

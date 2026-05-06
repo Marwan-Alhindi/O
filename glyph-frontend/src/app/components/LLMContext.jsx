@@ -3,6 +3,12 @@ import { findMentions } from "../utils/mentions"
 
 function LLMContext({ llm, messages, invitedLLMs = [], onClose }) {
     const c = getLLMColor(llm.display_number)
+    const llmMentionables = invitedLLMs.map(item => ({
+        id: item.id,
+        display_name: item.display_name,
+        kind: 'llm',
+        llm: item,
+    }))
 
     const connections = llm.llm_connections || []
     const connectedToUser = connections.some(c => c.target_type === 'user')
@@ -11,9 +17,9 @@ function LLMContext({ llm, messages, invitedLLMs = [], onClose }) {
     const relevantMessages = messages.filter(msg => {
         if (msg.sender_type === 'llm' && msg.sender_llm_id === llm.id) return true
         if (msg.sender_type === 'user') {
-            const mentions = findMentions(msg.content, invitedLLMs)
+            const mentions = findMentions(msg.content, llmMentionables)
             if (mentions.length === 0) return connectedToUser
-            return mentions.some(m => m.llm.id === llm.id)
+            return mentions.some(m => m.kind === 'llm' && m.llm?.id === llm.id)
         }
         if (msg.sender_type === 'llm' && connectedLlmIds.includes(msg.sender_llm_id)) return true
         return false
