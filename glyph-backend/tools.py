@@ -1,21 +1,53 @@
 """Agent tools — LangChain `@tool`-decorated functions.
 
-The chat agent binds these tools at graph build time. Both current tools
-(web_search, create_pdf) are self-contained and don't need per-request
-ctx (chat_id, user_id). When future tools need that, plumb it via
-`langchain.agents.create_agent`'s `context_schema=` parameter and read it
-from the runtime inside each tool.
+Two flavors:
+  - Stateless tools (`web_search`, `create_pdf`) need no per-request context;
+    they're singletons.
+  - Context-aware tools (`delegate`) close over per-request data — chat_id,
+    the calling LLM's id, the participants list. They're built fresh by
+    `make_delegate_tool(...)` for each agent run.
+
+`get_tools(ctx=None)` returns the full toolset. When `ctx` is None, only the
+stateless tools are returned (used at import time, mostly for tests).
 """
 
 import os
 import re
 import uuid
+from dataclasses import dataclass, field
 
 from langchain_core.tools import tool
+
+from config import supabase
 
 
 PDFS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdfs")
 PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE", "http://localhost:8000").rstrip("/")
+
+
+@dataclass(frozen=True)
+class Delegation:
+    """A queued handoff produced by the delegate tool during one agent run."""
+    target_llm_id: str
+    target_name: str
+    task: str
+    message_id: str | None = None
+
+
+@dataclass
+class ToolContext:
+    """Per-request data tools may close over."""
+    chat_id: str
+    sender_llm_id: str
+    # Map of normalized display_name -> invited_llms.id for the chat,
+    # EXCLUDING the sender (you can't delegate to yourself).
+    other_llms_by_name: dict[str, str]
+    delegations: list[Delegation] = field(default_factory=list)
+
+
+def normalize_llm_name(value: str) -> str:
+    """Normalize display names for mention/delegate lookups."""
+    return re.sub(r"\s+", " ", (value or "").lstrip("@").strip()).lower()
 
 
 @tool
@@ -82,6 +114,86 @@ def create_pdf(title: str, content: str) -> str:
     return f"PDF created at {url}. Include this URL in your reply as a markdown link like [Download {title}]({url}) so the user can download it."
 
 
-def get_tools():
-    """Return the tool list used by the chat agent."""
-    return [web_search, create_pdf]
+def make_delegate_tool(ctx: ToolContext):
+    """Build a `delegate` tool bound to this agent run.
+
+    Records the handoff as a `kind='delegation'` message and queues the
+    target LLM so the chat agent can run it after the current response is
+    persisted.
+    """
+
+    @tool
+    def delegate(target_name: str, task: str) -> str:
+        """Hand off a follow-up task to another LLM in this chat.
+
+        Use this only after you have completed your own part and the right
+        next step is for a different LLM to act on your output (e.g. you're a
+        researcher producing material for a designer). Only use it when
+        delegation is genuinely useful — a casual mention of another LLM's
+        name is not a reason to delegate. The user will not see this handoff
+        message in the normal timeline, so your final reply should contain
+        your own finished outcome, not narration about the handoff.
+
+        Args:
+            target_name: Display name of the target LLM, e.g. "Designer".
+                Case-insensitive. Don't include the leading '@'.
+            task: A clear, self-contained instruction the target LLM should
+                act on. Include the completed facts, summary, findings, or
+                context from your work that the target will need.
+        """
+        display_target = target_name.lstrip("@").strip()
+        normalized = normalize_llm_name(target_name)
+        target_id = ctx.other_llms_by_name.get(normalized)
+        if not target_id:
+            available = sorted(ctx.other_llms_by_name.keys())
+            if not available:
+                return "There are no other LLMs in this chat to delegate to."
+            return (
+                f"No LLM named {target_name!r} in this chat. "
+                f"Available: {available}"
+            )
+
+        task_text = task.strip()
+        if not task_text:
+            return "Delegation skipped: the task was empty."
+
+        if any(d.target_llm_id == target_id and d.task == task_text for d in ctx.delegations):
+            return f"Delegation to @{display_target} was already queued for this response."
+
+        try:
+            insert_result = supabase.table("messages").insert({
+                "chat_id": ctx.chat_id,
+                "sender_type": "llm",
+                "sender_llm_id": ctx.sender_llm_id,
+                "content": f"-> @{display_target}: {task_text}",
+                "kind": "delegation",
+            }).execute()
+        except Exception as e:
+            return f"Delegation failed: {e}"
+
+        message_id = insert_result.data[0].get("id") if insert_result.data else None
+        ctx.delegations.append(Delegation(
+            target_llm_id=target_id,
+            target_name=display_target,
+            task=task_text,
+            message_id=message_id,
+        ))
+
+        return (
+            f"Delegation to @{display_target} queued. "
+            "Now give the user your final outcome without describing the handoff."
+        )
+
+    return delegate
+
+
+def get_tools(ctx: ToolContext | None = None):
+    """Return the tool list used by the chat agent.
+
+    Pass `ctx` from the request handler to enable context-aware tools like
+    `delegate`. Without it, only stateless tools are included.
+    """
+    base = [web_search, create_pdf]
+    if ctx is not None:
+        base.append(make_delegate_tool(ctx))
+    return base

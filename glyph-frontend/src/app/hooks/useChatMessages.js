@@ -74,7 +74,7 @@ export function useChatMessages(chatId, { onLLMReply } = {}) {
                     if (fullMsg) {
                         setMessages(prev => prev.some(m => m.id === fullMsg.id) ? prev : [...prev, fullMsg])
 
-                        if (fullMsg.sender_type === 'llm' && fullMsg.sender_llm_id) {
+                        if (fullMsg.sender_type === 'llm' && fullMsg.sender_llm_id && (fullMsg.kind || 'chat') === 'chat') {
                             onLLMReply?.(fullMsg)
                         }
 

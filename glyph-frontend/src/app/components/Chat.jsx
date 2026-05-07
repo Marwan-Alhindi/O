@@ -16,7 +16,7 @@ import {
     PeopleIcon, FilterIcon, TrashIcon, FileIcon, CalendarIcon, NoteIcon,
     AgentIcon, ChatBubbleIcon, ChatIcon,
 } from "./Icons"
-import { supabase, API_BASE } from "../../services/supabase"
+import { API_BASE, apiFetch } from "../../services/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { getLLMColor, getLLMInitials, getPersonColor, modelTypeLabel } from "../utils/llmColors"
 import { findMentions, isMentionPrefix } from "../utils/mentions"
@@ -57,13 +57,36 @@ function getMentionableBadge(target) {
 
 function Chat({ chatId }) {
     const [pendingLLMs, setPendingLLMs] = useState({}) // { llmId: true }
-    const handleLLMReply = useCallback((fullMsg) => {
+    const pendingLLMIdsRef = useRef(new Set())
+    const sendingMessageRef = useRef(false)
+    const markPendingLLM = useCallback((llmId, state = {}) => {
+        if (!llmId) return
+        pendingLLMIdsRef.current.add(llmId)
         setPendingLLMs(prev => {
+            const cur = prev[llmId] || { text: "" }
+            return {
+                ...prev,
+                [llmId]: {
+                    ...cur,
+                    ...state,
+                    text: state.text ?? cur.text ?? "",
+                },
+            }
+        })
+    }, [])
+    const clearPendingLLM = useCallback((llmId) => {
+        if (!llmId) return
+        pendingLLMIdsRef.current.delete(llmId)
+        setPendingLLMs(prev => {
+            if (!prev[llmId]) return prev
             const next = { ...prev }
-            delete next[fullMsg.sender_llm_id]
+            delete next[llmId]
             return next
         })
     }, [])
+    const handleLLMReply = useCallback((fullMsg) => {
+        clearPendingLLM(fullMsg.sender_llm_id)
+    }, [clearPendingLLM])
     const {
         chatName,
         messages, setMessages,
@@ -164,59 +187,33 @@ function Chat({ chatId }) {
     }, [chatId, user?.id])
 
     async function handleInviteLLM(name, modelType, instructions, connections) {
-        const maxNum = invitedLLMs.reduce((max, l) => Math.max(max, l.display_number || 0), 0)
-        const displayNumber = maxNum + 1
-
-        const { data: newLlm, error: llmError } = await supabase
-            .from("invited_llms")
-            .insert({
-                chat_id: chatId,
-                display_name: name,
-                model_type: modelType,
-                model_instruct: instructions,
-                display_number: displayNumber,
-                invited_by: user.id
-            })
-            .select()
-            .single()
-
-        if (llmError) {
-            console.error("Error inviting LLM:", llmError)
-            alert("Failed to invite LLM: " + llmError.message)
-            return
-        }
-
-        const connRows = connections.map(c => c === "user"
-            ? { llm_id: newLlm.id, target_type: "user", target_llm_id: null }
-            : { llm_id: newLlm.id, target_type: "llm", target_llm_id: c }
+        // Backend owns the full flow now: create LLM row, persist connections,
+        // post the join message. The frontend just hands over user intent.
+        const connectionsPayload = connections.map(c => c === "user"
+            ? { target_type: "user", target_llm_id: null }
+            : { target_type: "llm", target_llm_id: c }
         )
 
-        if (connRows.length > 0) {
-            const { error: connError } = await supabase.from("llm_connections").insert(connRows)
-            if (connError) {
-                console.error("Connection insert error:", connError)
-                alert("Failed to create connections: " + connError.message)
-            }
-        }
-
-        const fullLlm = { ...newLlm, llm_connections: connRows.map((c, i) => ({ id: `temp-${i}`, ...c })) }
-        setInvitedLLMs(prev => prev.some(l => l.id === fullLlm.id) ? prev : [...prev, fullLlm])
-        setInviteLLMpop(false)
-
         try {
-            const res = await fetch(`${API_BASE}/inviteLLM`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
-                body: JSON.stringify({ chat_id: chatId, llm_id: newLlm.id })
+            const { llm: newLlm, connections: connRows } = await apiFetch('/inviteLLM', {
+                method: 'POST',
+                body: {
+                    chat_id: chatId,
+                    display_name: name,
+                    model_type: modelType,
+                    model_instruct: instructions,
+                    connections: connectionsPayload,
+                },
             })
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}))
-                console.error("Backend invite error:", err)
-                alert("Backend error: " + (err.detail || res.statusText))
+            const fullLlm = {
+                ...newLlm,
+                llm_connections: (connRows || []).map((c, i) => ({ id: `temp-${i}`, ...c })),
             }
+            setInvitedLLMs(prev => prev.some(l => l.id === fullLlm.id) ? prev : [...prev, fullLlm])
+            setInviteLLMpop(false)
         } catch (err) {
-            console.error("Invite fetch error:", err)
-            alert(`Could not reach backend at ${API_BASE}: ${err.message}`)
+            console.error('Invite LLM error:', err)
+            alert('Failed to invite LLM: ' + (err.detail || err.message))
         }
     }
 
@@ -357,7 +354,8 @@ function Chat({ chatId }) {
     }
 
     async function handleSendMessage() {
-        if (!inputText.trim()) return
+        if (!inputText.trim() || sendingMessageRef.current) return
+        sendingMessageRef.current = true
         const text = inputText
         const isSideAsk = sideAskActive
         const manualMentions = findMentions(text, mentionables)
@@ -367,31 +365,34 @@ function Chat({ chatId }) {
         setShowMentionDropdown(false)
         setShowStickyTargetDropdown(false)
 
-        const { data: newMsg, error: msgError } = await supabase
-            .from("messages")
-            .insert({
-                chat_id: chatId,
-                sender_type: "user",
-                sender_user_id: user.id,
-                content: messageText,
-                included_in_context: !isSideAsk
+        let newMsg
+        try {
+            newMsg = await apiFetch('/messages', {
+                method: 'POST',
+                body: {
+                    chat_id: chatId,
+                    content: messageText,
+                    included_in_context: !isSideAsk,
+                },
             })
-            .select("*, invited_llms(id, display_name, display_number, model_type)")
-            .single()
-
-        if (msgError) {
-            console.error("Message insert error:", msgError)
-            alert("Failed to send message: " + msgError.message)
+        } catch (err) {
+            console.error('Message insert error:', err)
+            alert('Failed to send message: ' + (err.detail || err.message))
             setInputText(text)
             setSideAskActive(isSideAsk)
+            sendingMessageRef.current = false
             return
         }
 
         setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg])
+        sendingMessageRef.current = false
 
-        // Only model mentions trigger a stream; person mentions stay in the team thread.
-        const mentioned = findMentions(messageText, mentionables).filter(m => m.kind === 'llm')
-        const targetLLMs = mentioned.length > 0 ? [mentioned[0].target] : []
+        // Addressee rule: the FIRST active (`@`, not `@@`) mention is the addressee.
+        // If it's a person, no LLM fires (the message is for that person, even if
+        // it references LLMs later). If it's an LLM, that LLM fires.
+        const allMentions = findMentions(messageText, mentionables)
+        const firstActive = allMentions.find(m => m.active)
+        const targetLLMs = firstActive && firstActive.kind === 'llm' ? [firstActive.target] : []
 
         for (const llm of targetLLMs) {
             await streamLLMReply(llm, null, isSideAsk ? newMsg.id : null)
@@ -399,7 +400,20 @@ function Chat({ chatId }) {
     }
 
     async function streamLLMReply(llm, replaceMessageId = null, sideMessageId = null) {
-        setPendingLLMs(prev => ({ ...prev, [llm.id]: { text: "", replaceMessageId, sideMessageId } }))
+        if (pendingLLMIdsRef.current.has(llm.id)) return
+
+        const streamOwnedLLMIds = new Set()
+        const beginPending = (llmId, state = {}) => {
+            if (!pendingLLMIdsRef.current.has(llmId)) {
+                streamOwnedLLMIds.add(llmId)
+            }
+            markPendingLLM(llmId, state)
+        }
+        const clearIfOwned = (llmId) => {
+            if (streamOwnedLLMIds.has(llmId)) clearPendingLLM(llmId)
+        }
+
+        beginPending(llm.id, { text: "", replaceMessageId, sideMessageId })
         try {
             const res = await fetch(`${API_BASE}/askLLM`, {
                 method: "POST",
@@ -415,7 +429,7 @@ function Chat({ chatId }) {
                 const err = await res.json().catch(() => ({}))
                 console.error("Backend ask error:", err)
                 alert("LLM error: " + (err.detail || res.statusText))
-                setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                clearIfOwned(llm.id)
                 return
             }
             setMobileTab("models")
@@ -434,21 +448,24 @@ function Chat({ chatId }) {
                     if (!evt.startsWith("data: ")) continue
                     let data
                     try { data = JSON.parse(evt.slice(6)) } catch { continue }
-                    if (data.type === "token") {
-                        setPendingLLMs(prev => {
-                            const cur = prev[llm.id]
-                            if (!cur) return prev
-                            return { ...prev, [llm.id]: { ...cur, text: cur.text + data.content } }
+                    const eventLlmId = data.llm_id || llm.id
+                    if (data.type === "agent_start") {
+                        beginPending(eventLlmId, {
+                            text: "",
+                            delegatedFromLlmId: data.from_llm_id,
+                            delegationMessageId: data.delegation_message_id,
                         })
+                    } else if (data.type === "token") {
+                        if (!pendingLLMIdsRef.current.has(eventLlmId)) beginPending(eventLlmId)
                     } else if (data.type === "error") {
                         console.error("Stream error:", data.detail)
                         alert("LLM error: " + (data.detail || "stream failed"))
-                        setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                        clearIfOwned(eventLlmId)
                     } else if (data.type === "done") {
                         // For new messages the INSERT realtime push also clears
                         // pending — but for regenerations the backend UPDATEs the
                         // existing row (no INSERT), so 'done' is the reliable signal.
-                        setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+                        clearIfOwned(eventLlmId)
                     }
                     // 'tool' events: client just renders progress; nothing to do here.
                 }
@@ -456,7 +473,10 @@ function Chat({ chatId }) {
         } catch (err) {
             console.error("Ask fetch error:", err)
             alert(`Could not reach backend at ${API_BASE}: ${err.message}`)
-            setPendingLLMs(prev => { const n = { ...prev }; delete n[llm.id]; return n })
+        } finally {
+            for (const pendingId of streamOwnedLLMIds) {
+                clearPendingLLM(pendingId)
+            }
         }
     }
 
@@ -464,17 +484,20 @@ function Chat({ chatId }) {
         const nowIso = new Date().toISOString()
         const prevSnapshot = { content: msg.content, edited_at: msg.edited_at }
         setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: newContent, edited_at: nowIso } : m))
-        const { error } = await supabase
-            .from("messages")
-            .update({ content: newContent, edited_at: nowIso })
-            .eq("id", msg.id)
-            .eq("sender_user_id", user.id)
-        if (error) {
+        try {
+            const { edited_at } = await apiFetch(`/messages/${msg.id}`, {
+                method: 'PATCH',
+                body: { content: newContent },
+            })
+            if (edited_at) {
+                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, edited_at } : m))
+            }
+            return true
+        } catch (err) {
             setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...prevSnapshot } : m))
-            alert("Failed to edit message: " + error.message)
+            alert('Failed to edit message: ' + (err.detail || err.message))
             return false
         }
-        return true
     }
 
     function handleDeleteMessage(msg) {
@@ -488,14 +511,11 @@ function Chat({ chatId }) {
         const nowIso = new Date().toISOString()
         const prevDeletedAt = msg.deleted_at
         setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deleted_at: nowIso } : m))
-        const { error } = await supabase
-            .from("messages")
-            .update({ deleted_at: nowIso })
-            .eq("id", msg.id)
-            .eq("sender_user_id", user.id)
-        if (error) {
+        try {
+            await apiFetch(`/messages/${msg.id}`, { method: 'DELETE' })
+        } catch (err) {
             setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, deleted_at: prevDeletedAt } : m))
-            alert("Failed to delete message: " + error.message)
+            alert('Failed to delete message: ' + (err.detail || err.message))
             setDeleteMessagePending(false)
             return
         }
@@ -544,15 +564,15 @@ function Chat({ chatId }) {
         idsToInclude = [...new Set(idsToInclude)].filter(Boolean)
 
         setMessages(prev => prev.map(m => idsToInclude.includes(m.id) ? { ...m, included_in_context: true } : m))
-        const { error } = await supabase
-            .from("messages")
-            .update({ included_in_context: true })
-            .in("id", idsToInclude)
-            .eq("chat_id", chatId)
-        if (error) {
-            console.error("Failed to add message to context:", error)
+        try {
+            await apiFetch('/messages/include_in_context', {
+                method: 'POST',
+                body: { chat_id: chatId, message_ids: idsToInclude, included: true },
+            })
+        } catch (err) {
+            console.error('Failed to add message to context:', err)
             setMessages(prev => prev.map(m => idsToInclude.includes(m.id) ? { ...m, included_in_context: false } : m))
-            alert("Failed to add message to context: " + error.message)
+            alert('Failed to add message to context: ' + (err.detail || err.message))
         }
     }
 
@@ -726,6 +746,7 @@ function Chat({ chatId }) {
         const teamAll = []
         const modelAll = []
         for (const msg of messages) {
+            if (msg.kind === 'delegation') continue
             if (msg.sender_type === 'llm') modelAll.push(msg)
             else teamAll.push(msg)
         }
@@ -1549,48 +1570,6 @@ function Chat({ chatId }) {
                             )
                         })}
 
-                        {/* New-reply pending bubbles. Regen-pending is rendered
-                            in-place above, so we skip entries with replaceMessageId. */}
-                        {Object.entries(pendingLLMs).map(([llmId, state]) => {
-                            if (state?.replaceMessageId) return null
-                            const llm = invitedLLMs.find(l => l.id === llmId)
-                            if (!llm) return null
-                            const c = getLLMColor(llm.display_number)
-                            const text = (state && state.text) || ""
-                            const hasText = text.length > 0
-                            const isSideReply = !!state?.sideMessageId
-                            return (
-                                <div
-                                    key={`pending-${llmId}`}
-                                    className={`overflow-hidden rounded-2xl border ${c.softBorder} bg-[var(--color-surface-2)] lp-fade-in`}
-                                >
-                                    <header className="flex items-center gap-2.5 border-b border-[var(--color-line-soft)] px-4 py-2.5">
-                                        <span className={`flex h-7 w-7 items-center justify-center rounded-full ${c.avatarBg} text-[10px] font-semibold ${c.avatarText}`}>
-                                            {getLLMInitials(llm.display_name)}
-                                        </span>
-                                        <span className={`text-sm font-medium ${c.text}`}>{llm.display_name}</span>
-                                        {isSideReply && (
-                                            <span className="rounded-full border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-fg-muted)]">
-                                                Not in context
-                                            </span>
-                                        )}
-                                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">{hasText ? 'streaming…' : 'thinking…'}</span>
-                                    </header>
-                                    {hasText ? (
-                                        <div className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-[var(--color-fg)]">
-                                            {text}
-                                            <span className="ml-0.5 inline-block h-3.5 w-px translate-y-0.5 animate-pulse bg-[var(--color-fg-subtle)]" />
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-1.5 px-4 py-4">
-                                            <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} />
-                                            <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.16s' }} />
-                                            <span className={`h-1.5 w-1.5 rounded-full ${c.dot} lp-dot`} style={{ animationDelay: '0.32s' }} />
-                                        </div>
-                                    )}
-                                </div>
-                            )
-                        })}
                     </>
                 )}
             </div>

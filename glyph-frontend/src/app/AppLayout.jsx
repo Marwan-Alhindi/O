@@ -89,67 +89,54 @@ function AppLayout() {
     }
 
     async function handleCreateChat() {
-        const { data: chat, error } = await supabase
-            .from("chats")
-            .insert({ name: "New chat", created_by: user.id })
-            .select()
-            .single()
-
-        if (error) {
-            console.error("Create chat error:", error)
-            alert("Failed to create chat: " + error.message)
-            return
+        try {
+            const { chat, participant } = await apiFetch('/chats', {
+                method: 'POST',
+                body: { name: 'New chat' },
+            })
+            setChats(prev => sortChats([{
+                ...chat,
+                role: participant?.role || 'owner',
+                pinned_at: participant?.pinned_at || null,
+                joined_at: participant?.joined_at || new Date().toISOString(),
+            }, ...prev]))
+            navigate(`/app/chat/${chat.id}`)
+        } catch (err) {
+            console.error('Create chat error:', err)
+            alert('Failed to create chat: ' + (err.detail || err.message))
         }
-
-        await supabase.from("chat_participants").insert({
-            chat_id: chat.id,
-            user_id: user.id,
-            role: "owner"
-        })
-
-        setChats(prev => sortChats([{ ...chat, role: "owner", pinned_at: null, joined_at: new Date().toISOString() }, ...prev]))
-        navigate(`/app/chat/${chat.id}`)
     }
 
     async function handleStartChatWithMessage(text) {
         if (!text.trim()) return
 
-        const { data: chat, error } = await supabase
-            .from("chats")
-            .insert({ name: text.trim().slice(0, 40), created_by: user.id })
-            .select()
-            .single()
+        try {
+            const { chat, participant } = await apiFetch('/chats', {
+                method: 'POST',
+                body: { name: text.trim().slice(0, 40) },
+            })
 
-        if (error) {
-            console.error("Create chat error:", error)
-            alert("Failed to create chat: " + error.message)
-            return
+            try {
+                await apiFetch('/messages', {
+                    method: 'POST',
+                    body: { chat_id: chat.id, content: text.trim() },
+                })
+            } catch (msgErr) {
+                console.error('Message insert error:', msgErr)
+            }
+
+            setChats(prev => sortChats([{
+                ...chat,
+                role: participant?.role || 'owner',
+                pinned_at: participant?.pinned_at || null,
+                joined_at: participant?.joined_at || new Date().toISOString(),
+            }, ...prev]))
+            setLandingInput('')
+            navigate(`/app/chat/${chat.id}`)
+        } catch (err) {
+            console.error('Create chat error:', err)
+            alert('Failed to create chat: ' + (err.detail || err.message))
         }
-
-        const { error: partError } = await supabase.from("chat_participants").insert({
-            chat_id: chat.id,
-            user_id: user.id,
-            role: "owner"
-        })
-
-        if (partError) {
-            console.error("Participant insert error:", partError)
-            alert("Failed to join chat: " + partError.message)
-            return
-        }
-
-        const { error: msgError } = await supabase.from("messages").insert({
-            chat_id: chat.id,
-            sender_type: "user",
-            sender_user_id: user.id,
-            content: text.trim()
-        })
-
-        if (msgError) console.error("Message insert error:", msgError)
-
-        setChats(prev => sortChats([{ ...chat, role: "owner", pinned_at: null, joined_at: new Date().toISOString() }, ...prev]))
-        setLandingInput("")
-        navigate(`/app/chat/${chat.id}`)
     }
 
     async function handleLogout() {
@@ -164,17 +151,19 @@ function AppLayout() {
 
     async function handleTogglePin(chat, e) {
         e?.stopPropagation()
-        const newPinnedAt = chat.pinned_at ? null : new Date().toISOString()
+        const wantPinned = !chat.pinned_at
+        const optimisticPinnedAt = wantPinned ? new Date().toISOString() : null
         const prev = chat.pinned_at
-        setChats(list => sortChats(list.map(c => c.id === chat.id ? { ...c, pinned_at: newPinnedAt } : c)))
-        const { error } = await supabase
-            .from("chat_participants")
-            .update({ pinned_at: newPinnedAt })
-            .eq("chat_id", chat.id)
-            .eq("user_id", user.id)
-        if (error) {
+        setChats(list => sortChats(list.map(c => c.id === chat.id ? { ...c, pinned_at: optimisticPinnedAt } : c)))
+        try {
+            const { pinned_at } = await apiFetch(`/chats/${chat.id}/pin`, {
+                method: 'PATCH',
+                body: { pinned: wantPinned },
+            })
+            setChats(list => sortChats(list.map(c => c.id === chat.id ? { ...c, pinned_at } : c)))
+        } catch (err) {
             setChats(list => sortChats(list.map(c => c.id === chat.id ? { ...c, pinned_at: prev } : c)))
-            alert("Failed to update pin: " + error.message)
+            alert('Failed to update pin: ' + (err.detail || err.message))
         }
     }
 
@@ -189,15 +178,15 @@ function AppLayout() {
         setRenamingChatId(null)
         if (!newName || newName === chat.name) return
 
-        const { error } = await supabase
-            .from("chats")
-            .update({ name: newName })
-            .eq("id", chat.id)
-        if (error) {
-            alert("Failed to rename chat: " + error.message)
-            return
+        try {
+            await apiFetch(`/chats/${chat.id}`, {
+                method: 'PATCH',
+                body: { name: newName },
+            })
+            setChats(prev => prev.map(c => c.id === chat.id ? { ...c, name: newName } : c))
+        } catch (err) {
+            alert('Failed to rename chat: ' + (err.detail || err.message))
         }
-        setChats(prev => prev.map(c => c.id === chat.id ? { ...c, name: newName } : c))
     }
 
     function handleRenameCancel() {
@@ -210,23 +199,11 @@ function AppLayout() {
         if (!chat) return
         setLeavePending(true)
 
-        await supabase.from("messages").insert({
-            chat_id: chat.id,
-            sender_type: "user",
-            sender_user_id: user.id,
-            content: `${firstName} left the chat`,
-            kind: "leave"
-        })
-
-        const { error } = await supabase
-            .from("chat_participants")
-            .delete()
-            .eq("chat_id", chat.id)
-            .eq("user_id", user.id)
-
-        if (error) {
-            console.error("Leave chat error:", error)
-            alert("Failed to leave chat: " + error.message)
+        try {
+            await apiFetch(`/chats/${chat.id}/leave`, { method: 'POST' })
+        } catch (err) {
+            console.error('Leave chat error:', err)
+            alert('Failed to leave chat: ' + (err.detail || err.message))
             setLeavePending(false)
             return
         }

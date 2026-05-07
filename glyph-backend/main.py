@@ -1,29 +1,36 @@
 """FastAPI bootstrap: app instance, middleware, static mounts, route handlers.
 
 Domain logic lives elsewhere:
-- config.py    — env, OpenAI/Supabase/JWKS clients, LangSmith setup
-- auth.py      — JWT + chat membership
-- schemas.py   — pydantic request/response models
-- context.py   — chat history → messages with llm_connections filtering
-- tools.py     — agent tools (web_search, create_pdf)
-- agents/      — chat_agent, planner_agent, join_agent
-- invitations  — invite endpoints
+- config.py     — env, OpenAI/Supabase/JWKS clients, LangSmith setup
+- auth.py       — JWT + chat membership
+- schemas.py    — pydantic request/response models for /askLLM and /planAgent
+- context.py    — chat history → messages with llm_connections filtering
+- tools.py      — agent tools (web_search, create_pdf)
+- agents/       — chat_agent, planner_agent, join_agent
+- chats         — chat lifecycle (create/rename/pin/leave)
+- messages      — message CRUD (insert/edit/delete/include_in_context)
+- participants  — invite LLMs + participants manifest
+- invitations   — email invite flow
 """
 
 import os
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import PDFS_DIR, setup_tracing, supabase
+from config import PDFS_DIR, setup_tracing
 from auth import get_current_user, verify_participant
-from schemas import AskLLMRequest, InviteLLMRequest, PlanAgentRequest
+from schemas import AskLLMRequest, PlanAgentRequest
 from agents.chat_agent import run_agent_stream
-from agents.join_agent import generate_join_message
 from agents.planner_agent import run_planner
+from chats import router as chats_router
+from messages import router as messages_router
+from participants import router as participants_router
 from invitations import router as invitations_router
+
+from fastapi import Header
 
 
 setup_tracing()
@@ -45,28 +52,6 @@ app.mount("/pdfs", StaticFiles(directory=PDFS_DIR), name="pdfs")
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Langpulse backend"}
-
-
-@app.post("/inviteLLM")
-def invite_llm(body: InviteLLMRequest, authorization: str = Header()):
-    user_id = get_current_user(authorization)
-    verify_participant(user_id, body.chat_id)
-
-    llm_result = supabase.table("invited_llms").select("*").eq("id", body.llm_id).single().execute()
-    llm = llm_result.data
-    if not llm:
-        raise HTTPException(status_code=404, detail="LLM not found")
-
-    join_text = generate_join_message(llm["display_name"])
-    supabase.table("messages").insert({
-        "chat_id": body.chat_id,
-        "sender_type": "llm",
-        "sender_llm_id": body.llm_id,
-        "content": join_text,
-        "kind": "join",
-    }).execute()
-
-    return {"response": join_text}
 
 
 @app.post("/askLLM")
@@ -98,4 +83,7 @@ def plan_agent(body: PlanAgentRequest, authorization: str = Header()):
     return result.model_dump()
 
 
+app.include_router(chats_router)
+app.include_router(messages_router)
+app.include_router(participants_router)
 app.include_router(invitations_router)

@@ -2,19 +2,20 @@
 
 Built on `langchain.agents.create_agent`, which returns a compiled LangGraph
 runnable. We stream events from the graph via `astream_events(version="v2")`
-and bridge them to the same SSE wire format the legacy implementation
-emitted, so the frontend doesn't need to change:
+and bridge them to the SSE wire format the frontend consumes:
 
-    {type: "token", content}      # on every model token chunk
-    {type: "tool", name}          # whenever a tool starts
-    {type: "done", message_id, content}  # after persisting the final message
-    {type: "error", detail}       # on errors
+    {type: "token", llm_id, content}      # on every model token chunk
+    {type: "tool", llm_id, name}          # whenever a tool starts
+    {type: "agent_start", llm_id, ...}    # delegated model is starting
+    {type: "done", llm_id, message_id, content}  # after persisting the final message
+    {type: "error", llm_id?, detail}      # on errors
 
 The chat row is inserted into Supabase by THIS module (not the agent), so
 the realtime push to other participants still happens at the right moment.
 """
 
 import json
+from dataclasses import dataclass, field
 
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage
@@ -23,7 +24,7 @@ from langgraph.errors import GraphRecursionError
 
 from config import supabase
 from context import build_context_messages
-from tools import get_tools
+from tools import Delegation, ToolContext, get_tools, normalize_llm_name
 
 
 # Hard cap on how many model+tool iterations the agent can run. Each
@@ -33,54 +34,144 @@ from tools import get_tools
 RECURSION_LIMIT = 12
 
 
+@dataclass
+class AgentRunResult:
+    message_id: str | None = None
+    content: str = ""
+    delegations: list[Delegation] = field(default_factory=list)
+
+
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-# Build the agent once at import time. Tools and model are static; per-request
-# data flows through the messages list and the run config.
+# Model is reused across requests; the agent itself is built per-request so
+# context-aware tools (delegate) can close over chat_id / sender_llm_id /
+# the participants list.
 _chat_model = ChatOpenAI(model="gpt-4o", streaming=True)
-_agent = create_agent(model=_chat_model, tools=get_tools())
 
 
-async def run_agent_stream(
-    chat_id: str,
-    llm_id: str,
-    user_id: str,
-    replace_message_id: str | None = None,
-    side_message_id: str | None = None,
-):
-    """Async generator yielding SSE events as the agent runs.
+def _build_tool_context(chat_id: str, sender_llm_id: str) -> ToolContext:
+    """Fetch the other invited LLMs in this chat for the delegate tool's name lookup."""
+    rows = (
+        supabase.table("invited_llms")
+        .select("id, display_name")
+        .eq("chat_id", chat_id)
+        .neq("id", sender_llm_id)
+        .execute()
+        .data
+        or []
+    )
+    return ToolContext(
+        chat_id=chat_id,
+        sender_llm_id=sender_llm_id,
+        other_llms_by_name={
+            normalize_llm_name(r.get("display_name") or ""): r["id"]
+            for r in rows
+            if r.get("display_name")
+        },
+    )
 
-    When `replace_message_id` is provided, the agent regenerates that row in
-    place: context is truncated to messages strictly before it, and the
-    final answer is UPDATEd onto that row instead of inserted as a new one.
-    """
-    llm_result = (
+
+def _fetch_llm(llm_id: str) -> dict | None:
+    result = (
         supabase.table("invited_llms")
         .select("*")
         .eq("id", llm_id)
         .single()
         .execute()
     )
-    llm = llm_result.data
-    if not llm:
-        yield _sse({"type": "error", "detail": "LLM not found"})
-        return
+    return result.data
+
+
+def _augment_system_prompt(
+    base_prompt: str,
+    ctx: ToolContext,
+    llm_name: str,
+    allow_delegation: bool,
+) -> str:
+    """Append mention/delegation rules so @mentions are interpreted as routing."""
+    normalized_self = normalize_llm_name(llm_name)
+    others = ", ".join(f"@{name.title()}" for name in sorted(ctx.other_llms_by_name.keys()))
+    lines = [
+        "\n\n---",
+        f"Your display name in this chat is @{llm_name}.",
+        f"If a user message includes @{llm_name}, treat that as a direct address to you, not as an instruction to contact yourself.",
+        "If you receive a message like `OtherModel: -> @You: task`, that is an internal delegated task for you. Do the task directly.",
+        "The user should only see final outcomes. Do not mention internal handoff messages, tool calls, delegation status, or phrases like 'I will now share this' in your final reply.",
+    ]
+    if allow_delegation:
+        lines.append(
+            "When the user asks you to share, hand off, or provide your findings to another model, first complete your own work, then call the `delegate` tool with the target model and a self-contained task that includes the useful results or context they need."
+        )
+        lines.append("Do not claim that you delegated or asked another model unless the `delegate` tool succeeds.")
+        if others:
+            lines.append(f"Other LLMs in this chat you can delegate to: {others}.")
+        else:
+            lines.append("There are no other LLMs available to delegate to in this chat.")
+        lines.append(
+            "Use delegation only when the next action genuinely belongs to another LLM; casual references do not need a handoff."
+        )
+    else:
+        lines.append("This run was triggered by another model's handoff. The latest `-> @You:` handoff is your primary task; earlier user messages or mentions are background only. Do not delegate, hand off, or ask another model to do anything. Answer your assigned task directly as your final outcome.")
+    if normalized_self in ctx.other_llms_by_name:
+        lines.append("Never delegate to yourself.")
+    return (base_prompt or "") + "\n".join(lines)
+
+
+def _extract_final_text(final_messages) -> str:
+    if not final_messages:
+        return ""
+    for msg in reversed(final_messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            if isinstance(msg.content, str):
+                return msg.content
+            parts = [p.get("text", "") for p in msg.content if isinstance(p, dict)]
+            text = "".join(parts).strip()
+            if text:
+                return text
+    return ""
+
+
+async def _run_agent_once(
+    chat_id: str,
+    llm: dict,
+    user_id: str,
+    result: AgentRunResult,
+    replace_message_id: str | None = None,
+    side_message_id: str | None = None,
+    force_include_message_id: str | None = None,
+    allow_delegation: bool = True,
+):
+    llm_id = llm["id"]
+    tool_ctx = _build_tool_context(chat_id, llm_id)
+    llm_name = llm.get("display_name") or "LLM"
+    augmented_system_prompt = _augment_system_prompt(
+        llm.get("model_instruct") or "",
+        tool_ctx,
+        llm_name,
+        allow_delegation,
+    )
 
     initial_messages = build_context_messages(
         chat_id,
         llm_id,
-        llm.get("model_instruct") or "",
+        augmented_system_prompt,
         up_to_message_id=replace_message_id,
         include_message_id=side_message_id,
+        force_include_message_id=force_include_message_id,
     )
+
+    # Only the user-addressed root model can delegate. Delegated models answer
+    # their task directly, which keeps one user turn to one visible reply per
+    # involved model instead of model-to-model loops.
+    agent = create_agent(model=_chat_model, tools=get_tools(tool_ctx if allow_delegation else None))
 
     final_messages = None
     final_text = ""
 
     try:
-        async for event in _agent.astream_events(
+        async for event in agent.astream_events(
             {"messages": initial_messages},
             version="v2",
             config={
@@ -95,9 +186,9 @@ async def run_agent_stream(
                 chunk = event["data"].get("chunk")
                 content = getattr(chunk, "content", "") or ""
                 if content:
-                    yield _sse({"type": "token", "content": content})
+                    yield _sse({"type": "token", "llm_id": llm_id, "content": content})
             elif kind == "on_tool_start":
-                yield _sse({"type": "tool", "name": event.get("name", "")})
+                yield _sse({"type": "tool", "llm_id": llm_id, "name": event.get("name", "")})
             elif kind == "on_chain_end":
                 # The root graph emits its final state on its own on_chain_end.
                 # We can't always rely on the name, so capture the most recent
@@ -108,21 +199,11 @@ async def run_agent_stream(
     except GraphRecursionError:
         final_text = "I hit my step limit before I could finish. Please ask again with a narrower scope."
     except Exception as e:
-        yield _sse({"type": "error", "detail": f"Model error: {e}"})
+        yield _sse({"type": "error", "llm_id": llm_id, "detail": f"Model error: {e}"})
         return
 
-    if not final_text and final_messages:
-        # Pull the last AIMessage with non-empty text content as the final reply.
-        for msg in reversed(final_messages):
-            if isinstance(msg, AIMessage) and msg.content:
-                if isinstance(msg.content, str):
-                    final_text = msg.content
-                    break
-                # Some providers return content as a list of parts.
-                parts = [p.get("text", "") for p in msg.content if isinstance(p, dict)]
-                final_text = "".join(parts).strip()
-                if final_text:
-                    break
+    if not final_text:
+        final_text = _extract_final_text(final_messages)
 
     if not final_text.strip():
         final_text = "(empty response)"
@@ -148,4 +229,74 @@ async def run_agent_stream(
         }).execute()
         msg_id = insert_result.data[0]["id"] if insert_result.data else None
 
-    yield _sse({"type": "done", "message_id": msg_id, "content": final_text})
+    result.message_id = msg_id
+    result.content = final_text
+    result.delegations = list(tool_ctx.delegations)
+
+    yield _sse({"type": "done", "llm_id": llm_id, "message_id": msg_id, "content": final_text})
+
+
+async def run_agent_stream(
+    chat_id: str,
+    llm_id: str,
+    user_id: str,
+    replace_message_id: str | None = None,
+    side_message_id: str | None = None,
+):
+    """Async generator yielding SSE events as the agent runs.
+
+    When `replace_message_id` is provided, the agent regenerates that row in
+    place: context is truncated to messages strictly before it, and the
+    final answer is UPDATEd onto that row instead of inserted as a new one.
+
+    Delegations produced by the user-addressed LLM are run once after its own
+    response is saved. Delegated LLMs do not receive the delegate tool.
+    """
+    llm = _fetch_llm(llm_id)
+    if not llm:
+        yield _sse({"type": "error", "llm_id": llm_id, "detail": "LLM not found"})
+        return
+
+    root_result = AgentRunResult()
+    async for event in _run_agent_once(
+        chat_id,
+        llm,
+        user_id,
+        root_result,
+        replace_message_id=replace_message_id,
+        side_message_id=side_message_id,
+    ):
+        yield event
+
+    seen_targets: set[str] = set()
+    for delegation in root_result.delegations:
+        if delegation.target_llm_id in seen_targets:
+            continue
+        seen_targets.add(delegation.target_llm_id)
+        target_llm = _fetch_llm(delegation.target_llm_id)
+        if not target_llm:
+            yield _sse({
+                "type": "error",
+                "llm_id": delegation.target_llm_id,
+                "detail": f"Delegated target @{delegation.target_name} was not found",
+            })
+            continue
+
+        yield _sse({
+            "type": "agent_start",
+            "llm_id": delegation.target_llm_id,
+            "from_llm_id": llm_id,
+            "target_name": delegation.target_name,
+            "delegation_message_id": delegation.message_id,
+        })
+
+        delegated_result = AgentRunResult()
+        async for event in _run_agent_once(
+            chat_id,
+            target_llm,
+            user_id,
+            delegated_result,
+            force_include_message_id=delegation.message_id,
+            allow_delegation=False,
+        ):
+            yield event
