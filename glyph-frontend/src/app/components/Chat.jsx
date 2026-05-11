@@ -118,9 +118,14 @@ function Chat({ chatId }) {
     const [contextUser, setContextUser] = useState(null)
     const [showInviteUser, setShowInviteUser] = useState(false)
     const [mobileTab, setMobileTab] = useState("team") // "team" | "models"
-    const [teamFilterUserId, setTeamFilterUserId] = useState(null)
+    const [teamTabs, setTeamTabs] = useState(() => [{ id: 'team-tab-1', filterId: null }])
+    const [activeTeamTabId, setActiveTeamTabId] = useState('team-tab-1')
+    const [dragTeamTabId, setDragTeamTabId] = useState(null)
+    const [dragOverTeamTabId, setDragOverTeamTabId] = useState(null)
     const [workspaceTabs, setWorkspaceTabs] = useState(() => [{ id: 'tab-1', filterId: null }])
     const [activeTabId, setActiveTabId] = useState('tab-1')
+    const [dragTabId, setDragTabId] = useState(null)
+    const [dragOverTabId, setDragOverTabId] = useState(null)
     const [showWorkspaceFilterDropdown, setShowWorkspaceFilterDropdown] = useState(false)
     const [showTeamFilterDropdown, setShowTeamFilterDropdown] = useState(false)
 
@@ -149,6 +154,32 @@ function Chat({ chatId }) {
             return next
         })
     }
+
+    // Derived team tab state — mirrors the workspace tab pattern for the team pane.
+    const activeTeamTab = useMemo(
+        () => teamTabs.find(t => t.id === activeTeamTabId) ?? teamTabs[0],
+        [teamTabs, activeTeamTabId]
+    )
+    const teamFilterUserId = activeTeamTab?.filterId ?? null
+    function setTeamFilterUserId(filterId) {
+        setTeamTabs(prev => prev.map(t => t.id === activeTeamTabId ? { ...t, filterId } : t))
+    }
+    function addTeamTab() {
+        const id = `team-tab-${Date.now()}`
+        setTeamTabs(prev => [...prev, { id, filterId: null }])
+        setActiveTeamTabId(id)
+    }
+    function closeTeamTab(tabId, e) {
+        e.stopPropagation()
+        setTeamTabs(prev => {
+            if (prev.length <= 1) return prev
+            const idx = prev.findIndex(t => t.id === tabId)
+            const next = prev.filter(t => t.id !== tabId)
+            if (activeTeamTabId === tabId) setActiveTeamTabId(next[Math.max(0, idx - 1)]?.id ?? next[0]?.id)
+            return next
+        })
+    }
+
     const [panelWidths, setPanelWidths] = useState(() => {
         try {
             const saved = JSON.parse(localStorage.getItem("glyph.panelWidths") || "null")
@@ -786,10 +817,12 @@ function Chat({ chatId }) {
         }
     }, [openPanels, mobileTab, viewGroup])
 
-    // Reset filters if the selected target is no longer present
+    // Reset tab filterIds if the target person/LLM is no longer in the chat
     useEffect(() => {
-        if (teamFilterUserId && !profilesById[teamFilterUserId]) setTeamFilterUserId(null)
-    }, [teamFilterUserId, profilesById])
+        setTeamTabs(prev => prev.map(t =>
+            t.filterId && !profilesById[t.filterId] ? { ...t, filterId: null } : t
+        ))
+    }, [profilesById])
     useEffect(() => {
         setWorkspaceTabs(prev => prev.map(t =>
             t.filterId && !invitedLLMs.some(l => l.id === t.filterId)
@@ -806,7 +839,10 @@ function Chat({ chatId }) {
             if (showWorkspaceFilterDropdown && !e.target.closest?.('[data-filter="workspace"]')) setShowWorkspaceFilterDropdown(false)
         }
         function onKey(e) {
-            if (e.key === 'Escape') { setShowTeamFilterDropdown(false); setShowWorkspaceFilterDropdown(false) }
+            if (e.key === 'Escape') {
+                setShowTeamFilterDropdown(false)
+                setShowWorkspaceFilterDropdown(false)
+            }
         }
         document.addEventListener('mousedown', onDown)
         document.addEventListener('keydown', onKey)
@@ -1400,15 +1436,84 @@ function Chat({ chatId }) {
     )
 
     /* ---------- Team pane (left) ---------- */
-    const teamFilterPerson = teamFilterUserId ? profilesById[teamFilterUserId] : null
     const teamShownCount = teamMessages.filter(m => m.sender_type === 'user').length
     const teamTotalCount = teamMessagesAll.filter(m => m.sender_type === 'user').length
     const teamPane = (
         <section className="flex min-h-0 flex-1 flex-col bg-[var(--color-canvas)]">
-            <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
-                <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Team chat
+            {/* Chrome-style tab bar */}
+            <div className="flex items-end border-b border-[var(--color-line-soft)] bg-[var(--color-surface-2)]">
+                {/* Scrollable tab strip */}
+                <div className="flex min-w-0 flex-1 items-end overflow-x-auto">
+                    {teamTabs.map(tab => {
+                        const isActive = tab.id === activeTeamTabId
+                        const tabPerson = tab.filterId ? profilesById[tab.filterId] : null
+                        const isMe = tabPerson?.id === user?.id
+                        const isDragOver = dragOverTeamTabId === tab.id && dragTeamTabId !== tab.id
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                draggable
+                                onDragStart={() => setDragTeamTabId(tab.id)}
+                                onDragEnd={() => { setDragTeamTabId(null); setDragOverTeamTabId(null) }}
+                                onDragOver={e => { e.preventDefault(); setDragOverTeamTabId(tab.id) }}
+                                onDrop={() => {
+                                    if (!dragTeamTabId || dragTeamTabId === tab.id) return
+                                    setTeamTabs(prev => {
+                                        const from = prev.findIndex(t => t.id === dragTeamTabId)
+                                        const to = prev.findIndex(t => t.id === tab.id)
+                                        const next = [...prev]
+                                        next.splice(to, 0, next.splice(from, 1)[0])
+                                        return next
+                                    })
+                                    setDragTeamTabId(null)
+                                    setDragOverTeamTabId(null)
+                                }}
+                                onClick={() => setActiveTeamTabId(tab.id)}
+                                className={`group relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-[11px] font-medium transition-colors ${
+                                    isActive
+                                        ? 'rounded-t-lg border border-b-0 border-[var(--color-line-soft)] bg-[var(--color-canvas)] text-[var(--color-fg)] -mb-px'
+                                        : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-muted)]'
+                                } ${isDragOver ? 'border-l-2 border-l-[var(--color-brand)]' : ''}`}
+                            >
+                                {tabPerson ? (
+                                    <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[7px] font-bold ${isMe ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black' : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'}`}>
+                                        {(tabPerson.first_name?.[0] || 'U').toUpperCase()}
+                                    </span>
+                                ) : (
+                                    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-[var(--color-line-soft)] text-[var(--color-fg-subtle)]">
+                                        <PeopleIcon />
+                                    </span>
+                                )}
+                                <span className="max-w-[7rem] truncate">
+                                    {tabPerson ? (isMe ? `${tabPerson.first_name} (you)` : tabPerson.first_name) : 'All'}
+                                </span>
+                                {teamTabs.length > 1 && (
+                                    <span
+                                        role="button"
+                                        onClick={(e) => closeTeamTab(tab.id, e)}
+                                        className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded opacity-0 transition-opacity hover:bg-[var(--color-surface-3)] hover:text-rose-400 hover:!opacity-100 group-hover:opacity-50"
+                                    >
+                                        <XIcon size={8} />
+                                    </span>
+                                )}
+                            </button>
+                        )
+                    })}
+                    {/* + new tab */}
+                    <button
+                        type="button"
+                        onClick={addTeamTab}
+                        className="flex h-8 w-7 shrink-0 items-center justify-center self-center text-base text-[var(--color-fg-subtle)] hover:text-[var(--color-fg)] transition-colors"
+                        title="New tab"
+                    >
+                        +
+                    </button>
+                </div>
+                {/* Right: filter dropdown + message count */}
+                <div className="flex shrink-0 items-center gap-2 px-3 pb-1.5">
+                    <span className="text-[10px] text-[var(--color-fg-subtle)]">
+                        {teamFilterUserId ? `${teamShownCount} of ${teamTotalCount}` : `${teamShownCount}`} msgs
                     </span>
                     <div className="relative" data-filter="team">
                         <button
@@ -1419,18 +1524,13 @@ function Chat({ chatId }) {
                                     ? 'border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-fg)]'
                                     : 'border-[var(--color-line-soft)] bg-transparent text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg-muted)]'
                             }`}
-                            title="Filter by person"
+                            title="Set tab filter"
                         >
                             <FilterIcon />
-                            <span className="max-w-[8rem] truncate">
-                                {teamFilterPerson
-                                    ? (teamFilterUserId === user?.id ? `${teamFilterPerson.first_name} (you)` : teamFilterPerson.first_name)
-                                    : 'All people'}
-                            </span>
                             <span className="text-[8px] leading-none">▾</span>
                         </button>
                         {showTeamFilterDropdown && (
-                            <div className="lp-scroll absolute left-0 top-full z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl">
+                            <div className="lp-scroll absolute right-0 top-full z-30 mt-1 max-h-72 w-48 overflow-y-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl">
                                 <button
                                     type="button"
                                     onClick={() => { setTeamFilterUserId(null); setShowTeamFilterDropdown(false) }}
@@ -1442,9 +1542,7 @@ function Chat({ chatId }) {
                                     <span>All people</span>
                                     {!teamFilterUserId && <span className="ml-auto text-[var(--color-fg-subtle)]">✓</span>}
                                 </button>
-                                {teamPeopleList.length > 0 && (
-                                    <div className="border-t border-[var(--color-line-soft)]" />
-                                )}
+                                {teamPeopleList.length > 0 && <div className="border-t border-[var(--color-line-soft)]" />}
                                 {teamPeopleList.map(p => {
                                     const isMe = p.id === user?.id
                                     const initial = (p.first_name?.[0] || 'U').toUpperCase()
@@ -1468,9 +1566,6 @@ function Chat({ chatId }) {
                         )}
                     </div>
                 </div>
-                <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                    {teamFilterUserId ? `${teamShownCount} of ${teamTotalCount}` : `${teamShownCount}`} messages
-                </span>
             </div>
             <div ref={teamScrollRef} className="lp-scroll flex-1 space-y-4 overflow-y-auto px-4 py-4">
                 {teamMessages.length === 0 ? (
@@ -1537,16 +1632,33 @@ function Chat({ chatId }) {
                         const tabLLM = tab.filterId ? invitedLLMs.find(l => l.id === tab.filterId) : null
                         const tc = tabLLM ? getLLMColor(tabLLM.display_number) : null
                         const hasPending = tabLLM ? !!pendingLLMs[tabLLM.id] : Object.keys(pendingLLMs).length > 0
+                        const isDragOver = dragOverTabId === tab.id && dragTabId !== tab.id
                         return (
                             <button
                                 key={tab.id}
                                 type="button"
+                                draggable
+                                onDragStart={() => setDragTabId(tab.id)}
+                                onDragEnd={() => { setDragTabId(null); setDragOverTabId(null) }}
+                                onDragOver={e => { e.preventDefault(); setDragOverTabId(tab.id) }}
+                                onDrop={() => {
+                                    if (!dragTabId || dragTabId === tab.id) return
+                                    setWorkspaceTabs(prev => {
+                                        const from = prev.findIndex(t => t.id === dragTabId)
+                                        const to = prev.findIndex(t => t.id === tab.id)
+                                        const next = [...prev]
+                                        next.splice(to, 0, next.splice(from, 1)[0])
+                                        return next
+                                    })
+                                    setDragTabId(null)
+                                    setDragOverTabId(null)
+                                }}
                                 onClick={() => setActiveTabId(tab.id)}
                                 className={`group relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-[11px] font-medium transition-colors ${
                                     isActive
                                         ? 'rounded-t-lg border border-b-0 border-[var(--color-line-soft)] bg-[var(--color-surface-1)] text-[var(--color-fg)] -mb-px'
                                         : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg-muted)]'
-                                }`}
+                                } ${isDragOver ? 'border-l-2 border-l-[var(--color-brand)]' : ''}`}
                             >
                                 {tabLLM ? (
                                     <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[7px] font-bold ${tc.avatarBg} ${tc.avatarText}`}>
