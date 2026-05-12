@@ -86,7 +86,7 @@ def create_message(body: CreateMessageRequest, authorization: str = Header()):
     # off the joined row when rendering AI messages).
     full = (
         supabase.table("messages")
-        .select("*, invited_llms(id, display_name, display_number, model_type)")
+        .select("*, invited_llms(id, display_name, display_number)")
         .eq("id", new_id)
         .single()
         .execute()

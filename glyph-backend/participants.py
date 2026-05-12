@@ -147,7 +147,7 @@ def list_participants(chat_id: str, authorization: str = Header()):
 
     llms = (
         supabase.table("invited_llms")
-        .select("id, display_name, display_number, model_type, model_instruct, invited_by, created_at")
+        .select("id, display_name, display_number, model_instruct, invited_by, created_at")
         .eq("chat_id", chat_id)
         .order("display_number")
         .execute()
