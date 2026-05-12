@@ -30,6 +30,7 @@ from messages import router as messages_router
 from participants import router as participants_router
 from invitations import router as invitations_router
 from uploads import router as uploads_router
+from integrations.router import router as integrations_router
 
 from fastapi import Header
 
@@ -91,3 +92,4 @@ app.include_router(messages_router)
 app.include_router(participants_router)
 app.include_router(invitations_router)
 app.include_router(uploads_router)
+app.include_router(integrations_router)

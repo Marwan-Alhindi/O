@@ -41,7 +41,6 @@ class LLMConnectionInput(BaseModel):
 class InviteLLMRequest(BaseModel):
     chat_id: str
     display_name: str
-    model_type: str
     model_instruct: str = ""
     connections: list[LLMConnectionInput] = Field(default_factory=list)
 
@@ -89,7 +88,6 @@ def invite_llm(body: InviteLLMRequest, authorization: str = Header()):
         .insert({
             "chat_id": body.chat_id,
             "display_name": name,
-            "model_type": body.model_type,
             "model_instruct": body.model_instruct or "",
             "display_number": display_number,
             "invited_by": user_id,

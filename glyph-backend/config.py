@@ -22,10 +22,8 @@ os.makedirs(CHARTS_DIR, exist_ok=True)
 os.makedirs(FILES_DIR, exist_ok=True)
 
 
-supabase = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_SERVICE_KEY"),
-)
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+supabase = create_client(os.getenv("SUPABASE_URL"), SUPABASE_SERVICE_KEY)
 
 jwks_client = jwt.PyJWKClient(f"{os.getenv('SUPABASE_URL')}/auth/v1/.well-known/jwks.json")
 
