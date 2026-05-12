@@ -22,7 +22,7 @@ export function useChatMessages(chatId, { onLLMReply } = {}) {
 
             const { data: msgs } = await supabase
                 .from("messages")
-                .select("*, invited_llms(id, display_name, display_number, model_type)")
+                .select("*, invited_llms(id, display_name, display_number)")
                 .eq("chat_id", chatId)
                 .order("created_at", { ascending: true })
             if (msgs) setMessages(msgs)
@@ -67,7 +67,7 @@ export function useChatMessages(chatId, { onLLMReply } = {}) {
                 async (payload) => {
                     const { data: fullMsg } = await supabase
                         .from("messages")
-                        .select("*, invited_llms(id, display_name, display_number, model_type)")
+                        .select("*, invited_llms(id, display_name, display_number)")
                         .eq("id", payload.new.id)
                         .single()
 

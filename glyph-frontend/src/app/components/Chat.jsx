@@ -251,7 +251,7 @@ function Chat({ chatId }) {
         return `glyph.stickyMention.${user.id}.${chatId}`
     }, [chatId, user?.id])
 
-    async function handleInviteLLM(name, modelType, instructions, connections) {
+    async function handleInviteLLM(name, _modelType, instructions, connections) {
         // Backend owns the full flow now: create LLM row, persist connections,
         // post the join message. The frontend just hands over user intent.
         const connectionsPayload = connections.map(c => c === "user"
@@ -265,7 +265,6 @@ function Chat({ chatId }) {
                 body: {
                     chat_id: chatId,
                     display_name: name,
-                    model_type: modelType,
                     model_instruct: instructions,
                     connections: connectionsPayload,
                 },
