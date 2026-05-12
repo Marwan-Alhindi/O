@@ -105,13 +105,16 @@ def _augment_system_prompt(
     if gather_mode:
         lines.append(
             "All models you delegated to have now completed their tasks. Their responses are included in the conversation above. "
-            "Synthesize their results to complete the original user request. Do not delegate further — produce the final answer directly."
+            "Synthesize their results to complete the original user request. Do not delegate further — produce the final answer directly. "
+            "IMPORTANT: Use the EXACT numerical values, coefficients, scores, and text from the delegated models' responses — do NOT invent placeholder or example values. "
+            "If the delegated models produced chart images, copy their exact image URLs (https://...) into any PDF or document you create — do not invent or omit image URLs."
         )
     elif allow_delegation:
         lines.append(
             "When the user asks you to share, hand off, or provide your findings to another model, first complete your own work, then call the `delegate` tool with the target model and a self-contained task that includes the useful results or context they need."
         )
         lines.append("Do not claim that you delegated or asked another model unless the `delegate` tool succeeds.")
+        lines.append("Do NOT create PDFs, reports, or final output documents before delegation is complete — wait until the gather phase when all delegated results are available.")
         if others:
             lines.append(f"Other LLMs in this chat you can delegate to: {others}.")
         else:
