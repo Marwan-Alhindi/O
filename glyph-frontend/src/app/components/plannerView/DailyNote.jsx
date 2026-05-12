@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { useLanguage } from "../../../contexts/LanguageContext"
 
-function formatHumanDate(dateKey) {
+function formatHumanDate(dateKey, lang) {
     if (!dateKey) return ""
     const [y, m, d] = dateKey.split("-").map(n => parseInt(n, 10))
     const date = new Date(y, m - 1, d)
-    return date.toLocaleDateString(undefined, {
+    return date.toLocaleDateString(lang === 'ar' ? 'ar-SA' : undefined, {
         weekday: "long",
         month: "long",
         day: "numeric",
@@ -15,12 +16,13 @@ function formatHumanDate(dateKey) {
 }
 
 function DailyNote({ dateKey, value, onChange }) {
-    const [mode, setMode] = useState("write") // "write" | "preview"
+    const { t, lang } = useLanguage()
+    const pd = t.plannerDemo
+    const [mode, setMode] = useState("write")
     const [draft, setDraft] = useState(value ?? "")
     const debounceRef = useRef(null)
     const lastDateRef = useRef(dateKey)
 
-    // Reset draft when the selected day changes (flushing pending change first)
     useEffect(() => {
         if (lastDateRef.current !== dateKey) {
             if (debounceRef.current) {
@@ -32,7 +34,6 @@ function DailyNote({ dateKey, value, onChange }) {
         }
     }, [dateKey, value])
 
-    // Sync down if the persisted value changes externally for the same day
     useEffect(() => {
         if (lastDateRef.current === dateKey && (value ?? "") !== draft && debounceRef.current === null) {
             setDraft(value ?? "")
@@ -67,36 +68,29 @@ function DailyNote({ dateKey, value, onChange }) {
         return matches ? matches.length : 0
     }, [draft])
 
-    const placeholder = `# ${formatHumanDate(dateKey)}
-
-## Tasks
-- [ ] Add a task
-- [ ] Another one
-
-## Notes
-Write anything — it's just markdown.`
+    const placeholder = pd.dailyPlaceholder(formatHumanDate(dateKey, lang))
 
     return (
         <section className="flex min-h-0 flex-1 flex-col border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:border-l">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Daily note
+                        {pd.dailyNote}
                     </span>
                     <span className="text-[11px] text-[var(--color-fg-muted)]">·</span>
                     <span className="truncate text-[11px] text-[var(--color-fg-muted)]">
-                        {formatHumanDate(dateKey)}
+                        {formatHumanDate(dateKey, lang)}
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
                     {taskCount > 0 && (
                         <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                            {doneCount}/{taskCount} done
+                            {pd.doneFrac(doneCount, taskCount)}
                         </span>
                     )}
                     <div className="flex items-center gap-0.5 rounded-md border border-[var(--color-line)] p-0.5">
-                        <ModeBtn active={mode === "write"} onClick={() => setMode("write")}>Write</ModeBtn>
-                        <ModeBtn active={mode === "preview"} onClick={() => setMode("preview")}>Preview</ModeBtn>
+                        <ModeBtn active={mode === "write"} onClick={() => setMode("write")}>{pd.write}</ModeBtn>
+                        <ModeBtn active={mode === "preview"} onClick={() => setMode("preview")}>{pd.preview}</ModeBtn>
                     </div>
                 </div>
             </div>
@@ -113,7 +107,7 @@ Write anything — it's just markdown.`
             ) : (
                 <div className="lp-scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
                     {draft.trim() === "" ? (
-                        <p className="text-sm text-[var(--color-fg-subtle)]">Nothing here yet — switch to Write to start.</p>
+                        <p className="text-sm text-[var(--color-fg-subtle)]">{pd.nothingHereYet}</p>
                     ) : (
                         <div className="prose prose-invert max-w-none text-sm leading-relaxed">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{draft}</ReactMarkdown>

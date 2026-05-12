@@ -3,9 +3,12 @@ import LiveDemo from './LiveDemo'
 import PlannerDemo from './PlannerDemo'
 import TryItDemo from './TryItDemo'
 import Pricing from './Pricing'
+import { useLanguage } from '../../contexts/LanguageContext'
 
 function Hero() {
   const navigate = useNavigate()
+  const { t } = useLanguage()
+  const h = t.hero
 
   return (
     <section className="mx-auto max-w-6xl px-6 pt-20 pb-24 md:pt-28 md:pb-32">
@@ -19,24 +22,23 @@ function Hero() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-brand)] opacity-60" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" />
           </span>
-          New · Multi-LLM team conversations
-          <span>→</span>
+          {h.badge}
+          <span>{t.arrow}</span>
         </a>
       </div>
 
       {/* Headline */}
       <h1 className="mt-6 text-center font-[var(--font-display)] text-4xl font-semibold tracking-tight text-[var(--color-fg)] md:text-6xl">
-        One chat.{' '}
+        {h.headline1}{' '}
         <span className="bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300 bg-clip-text text-transparent">
-          Every model.
+          {h.headline2}
         </span>
         <br className="hidden md:block" />
-        <span className="text-[var(--color-fg-muted)]"> Your whole team.</span>
+        <span className="text-[var(--color-fg-muted)]">{h.headline3}</span>
       </h1>
 
       <p className="mx-auto mt-6 max-w-2xl text-center text-base leading-relaxed text-[var(--color-fg-muted)] md:text-lg">
-        Glyph brings GPT, Claude, Gemini and your teammates into the same room.
-        Mention a model, share an idea, ship faster — all in one collaborative thread.
+        {h.subheading}
       </p>
 
       {/* CTAs */}
@@ -45,19 +47,19 @@ function Hero() {
           onClick={() => navigate('/getstarted')}
           className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-medium text-black transition-all hover:bg-[var(--color-brand)] sm:w-auto"
         >
-          Start free
-          <span className="transition-transform group-hover:translate-x-0.5">→</span>
+          {h.ctaPrimary}
+          <span className="transition-transform group-hover:translate-x-0.5 rtl:rotate-180">{t.arrow}</span>
         </button>
         <button
           onClick={() => navigate('/login')}
           className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface-1)]/40 px-6 py-3 text-sm text-[var(--color-fg)] backdrop-blur-md hover:border-[var(--color-fg-subtle)] sm:w-auto"
         >
-          Log in
+          {h.ctaSecondary}
         </button>
       </div>
 
       <p className="mt-4 text-center text-xs text-[var(--color-fg-subtle)]">
-        Free during beta · No credit card required
+        {h.freeBadge}
       </p>
 
       {/* Mock chat preview */}
@@ -72,8 +74,8 @@ function Hero() {
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
             </div>
             <div className="flex items-center gap-2 text-xs text-[var(--color-fg-subtle)]">
-              <span className="font-medium text-[var(--color-fg-muted)]">launch-plan</span>
-              <span>· 3 humans · 2 models</span>
+              <span className="font-medium text-[var(--color-fg-muted)]">{h.mockChat.title}</span>
+              <span>{h.mockChat.subtitle}</span>
             </div>
             <div className="w-12" />
           </div>
@@ -81,25 +83,25 @@ function Hero() {
           {/* two-pane preview */}
           <div className="grid grid-cols-1 md:grid-cols-2">
             {/* Left: team chat */}
-            <div className="space-y-4 border-b border-[var(--color-line-soft)] p-5 md:border-b-0 md:border-r">
+            <div className="space-y-4 border-b border-[var(--color-line-soft)] p-5 md:border-b-0 md:border-e">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                Team
+                {h.mockChat.team}
               </div>
               <Bubble who="Marwan" tone="me">
-                Let's brainstorm a launch plan. <span className="text-emerald-300">@Aria</span> draft a 3-line teaser, <span className="text-violet-300">@Nova</span> review my pricing slide.
+                <MentionText text={t.demo.hero.msgMarwan} />
               </Bubble>
               <Bubble who="Sara" tone="them">
-                +1 — let's keep it concise.
+                {t.demo.hero.msgSara}
               </Bubble>
               <div className="rounded-xl border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] p-3 text-xs text-[var(--color-fg-subtle)]">
-                💬 Type @ to bring a model in
+                {h.mockChat.typeTip}
               </div>
             </div>
 
             {/* Right: LLM workspace */}
             <div className="space-y-4 p-5">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                Models
+                {h.mockChat.models}
               </div>
               <ModelCard
                 colorRing="ring-emerald-500/60"
@@ -108,11 +110,9 @@ function Hero() {
                 name="Aria"
                 model="GPT-4o"
               >
-                Three lines, ready:
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--color-fg-muted)]">
-                  <li>Built for teams that ship.</li>
-                  <li>Bring every model into one thread.</li>
-                  <li>From idea to shipped — together.</li>
+                {t.demo.hero.ariaIntro}
+                <ul className="mt-2 list-disc space-y-1 ps-5 text-[var(--color-fg-muted)]">
+                  {t.demo.hero.ariaLines.map((line, i) => <li key={i}>{line}</li>)}
                 </ul>
               </ModelCard>
               <ModelCard
@@ -122,7 +122,7 @@ function Hero() {
                 name="Nova"
                 model="Claude"
               >
-                Pricing slide reads clean. Suggest swapping "per seat" for "per teammate" — friendlier copy.
+                {t.demo.hero.novaMsg}
               </ModelCard>
             </div>
           </div>
@@ -132,16 +132,16 @@ function Hero() {
       {/* Feature trio */}
       <section id="features" className="mt-24 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-line)] md:grid-cols-3">
         <Feature
-          title="Multiple models, one thread"
-          desc="Invite GPT, Claude, Gemini and more into the same chat. Each one has its own color, prompt, and connections."
+          title={h.features.f1title}
+          desc={h.features.f1desc}
         />
         <Feature
-          title="Real teammates, real-time"
-          desc="Bring humans in with an invite code. Everyone sees the same conversation as it unfolds."
+          title={h.features.f2title}
+          desc={h.features.f2desc}
         />
         <Feature
-          title="Mention to ask"
-          desc="Type @model to send the prompt. Replies show up in the workspace pane — code blocks, markdown, the works."
+          title={h.features.f3title}
+          desc={h.features.f3desc}
         />
       </section>
 
@@ -162,18 +162,18 @@ function Hero() {
         <div className="relative overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-1)] p-10 text-center">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-violet-500/10" />
           <h2 className="relative text-2xl font-semibold tracking-tight md:text-3xl">
-            Bring your models and your team into one room.
+            {h.ctaStrip.headline}
           </h2>
           <p className="relative mt-2 text-sm text-[var(--color-fg-muted)]">
-            Free to start. Add seats and models when you're ready.
+            {h.ctaStrip.desc}
           </p>
           <div className="relative mt-6 flex justify-center">
             <button
               onClick={() => navigate('/getstarted')}
               className="group inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-medium text-black transition-all hover:bg-[var(--color-brand)]"
             >
-              Get started
-              <span className="transition-transform group-hover:translate-x-0.5">→</span>
+              {h.ctaStrip.button}
+              <span className="transition-transform group-hover:translate-x-0.5 rtl:rotate-180">{t.arrow}</span>
             </button>
           </div>
         </div>
@@ -190,7 +190,7 @@ function Bubble({ who, tone, children }) {
         {who[0]}
       </div>
       <div className="max-w-[80%] space-y-1">
-        <div className={`text-[11px] text-[var(--color-fg-subtle)] ${isMe ? 'text-right' : ''}`}>{who}</div>
+        <div className={`text-[11px] text-[var(--color-fg-subtle)] ${isMe ? 'text-end' : ''}`}>{who}</div>
         <div className={`rounded-2xl border px-3.5 py-2 text-sm leading-relaxed text-[var(--color-fg)] ${isMe ? 'bg-[var(--color-surface-3)] border-white/[0.07]' : 'bg-[var(--color-surface-2)] border-[var(--color-line-soft)]'}`}>
           {children}
         </div>
@@ -208,10 +208,25 @@ function ModelCard({ name, model, colorRing, colorDot, colorText, children }) {
         </span>
         <span className={`text-xs font-medium ${colorText}`}>{name}</span>
         <span className="text-[10px] text-[var(--color-fg-subtle)]">· {model}</span>
-        <span className={`ml-auto h-1.5 w-1.5 rounded-full ${colorDot}`} />
+        <span className={`ms-auto h-1.5 w-1.5 rounded-full ${colorDot}`} />
       </div>
       <div className="text-sm leading-relaxed text-[var(--color-fg)]">{children}</div>
     </div>
+  )
+}
+
+const MENTION_COLORS = { Aria: 'text-emerald-300', Nova: 'text-violet-300', Atlas: 'text-sky-300' }
+
+function MentionText({ text }) {
+  const parts = text.split(/(@\w+)/g)
+  return (
+    <>
+      {parts.map((p, i) => {
+        const name = p.startsWith('@') ? p.slice(1) : null
+        const color = name && MENTION_COLORS[name]
+        return color ? <span key={i} className={color}>{p}</span> : <span key={i}>{p}</span>
+      })}
+    </>
   )
 }
 

@@ -1,5 +1,6 @@
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 import { useEffect, useState } from "react"
 import { apiFetch } from "../../services/supabase"
 
@@ -8,6 +9,8 @@ function Getstarted() {
     const [searchParams] = useSearchParams()
     const inviteToken = searchParams.get("invite")
     const { register, resendVerification } = useAuth()
+    const { t } = useLanguage()
+    const tg = t.getstarted
     const [email, setEmail] = useState("")
     const [firstName, setFirstName] = useState("")
     const [lastName, setLastName] = useState("")
@@ -16,7 +19,7 @@ function Getstarted() {
     const [error, setError] = useState("")
     const [loading, setLoading] = useState(false)
     const [invitePreview, setInvitePreview] = useState(null)
-    const [pendingVerification, setPendingVerification] = useState(null) // email string when waiting on email verification
+    const [pendingVerification, setPendingVerification] = useState(null)
     const [resending, setResending] = useState(false)
     const [resendNotice, setResendNotice] = useState("")
     const [emailAlreadyExists, setEmailAlreadyExists] = useState(false)
@@ -36,11 +39,11 @@ function Getstarted() {
         setError("")
 
         if (password !== confirmPassword) {
-            setError("Passwords do not match")
+            setError(tg.passwordsNoMatch)
             return
         }
         if (password.length < 6) {
-            setError("Password must be at least 6 characters")
+            setError(tg.passwordTooShort)
             return
         }
 
@@ -48,24 +51,16 @@ function Getstarted() {
         try {
             const next = inviteToken ? `/invite/${inviteToken}` : '/app'
             const data = await register(email, firstName, lastName, password, { next })
-            // Supabase signUp with an email that already has a confirmed account
-            // returns a "fake" user with `identities: []` — to prevent enumeration.
-            // No verification email is sent, no account is created. Detect that
-            // here so we can tell the user to log in instead.
             if (Array.isArray(data?.user?.identities) && data.user.identities.length === 0) {
                 setEmailAlreadyExists(true)
                 return
             }
-            // If email confirmation is enabled in Supabase, signUp returns a user
-            // but no session — the user must click the verification email first.
             if (data?.session) {
                 navigate(next)
             } else {
                 setPendingVerification(email)
             }
         } catch (err) {
-            // Some Supabase configs error directly with "User already registered"
-            // when email confirmation is off and the email exists.
             const msg = (err?.message || "").toLowerCase()
             if (msg.includes("already registered") || msg.includes("user already exists")) {
                 setEmailAlreadyExists(true)
@@ -84,7 +79,7 @@ function Getstarted() {
         try {
             const next = inviteToken ? `/invite/${inviteToken}` : '/app'
             await resendVerification(pendingVerification, { next })
-            setResendNotice("Verification email sent again.")
+            setResendNotice(tg.checkEmail.resend + ' ✓')
         } catch (err) {
             setResendNotice(err.message || "Could not resend verification.")
         } finally {
@@ -104,24 +99,22 @@ function Getstarted() {
                         <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/15 text-amber-300">
                             <UserCheckIcon />
                         </div>
-                        <h1 className="text-xl font-semibold tracking-tight">Account already exists</h1>
+                        <h1 className="text-xl font-semibold tracking-tight">{tg.accountExists.title}</h1>
                         <p className="text-sm text-[var(--color-fg-muted)]">
-                            An account with{' '}
-                            <strong className="text-[var(--color-fg)]">{email}</strong>{' '}
-                            already exists. Log in instead{invitePreview ? ` and we'll add you to ${invitePreview.chat_name}` : ''}.
+                            {tg.accountExists.desc(email, invitePreview?.chat_name)}
                         </p>
                         <div className="flex flex-col gap-2 pt-2">
                             <button
                                 onClick={() => navigate(loginPath)}
                                 className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-[var(--color-brand)]"
                             >
-                                Go to log in
+                                {tg.accountExists.goToLogin}
                             </button>
                             <button
                                 onClick={() => setEmailAlreadyExists(false)}
                                 className="rounded-lg px-4 py-2 text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
                             >
-                                Use a different email
+                                {tg.accountExists.useDifferent}
                             </button>
                         </div>
                     </div>
@@ -141,15 +134,12 @@ function Getstarted() {
                         <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
                             <MailIcon />
                         </div>
-                        <h1 className="text-xl font-semibold tracking-tight">Check your email</h1>
+                        <h1 className="text-xl font-semibold tracking-tight">{tg.checkEmail.title}</h1>
                         <p className="text-sm text-[var(--color-fg-muted)]">
-                            We sent a verification link to{' '}
-                            <strong className="text-[var(--color-fg)]">{pendingVerification}</strong>.
-                            Click it to finish creating your account
-                            {invitePreview ? ` and join ${invitePreview.chat_name}.` : '.'}
+                            {tg.checkEmail.desc(pendingVerification, invitePreview?.chat_name)}
                         </p>
                         <p className="text-xs text-[var(--color-fg-subtle)]">
-                            Didn't see it? Check your spam folder, or resend below.
+                            {tg.checkEmail.spam}
                         </p>
                         {resendNotice && (
                             <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-fg-muted)]">
@@ -162,13 +152,13 @@ function Getstarted() {
                                 disabled={resending}
                                 className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-2 text-sm text-[var(--color-fg)] hover:border-[var(--color-fg-subtle)] disabled:opacity-60"
                             >
-                                {resending ? 'Sending…' : 'Resend verification email'}
+                                {resending ? tg.checkEmail.sending : tg.checkEmail.resend}
                             </button>
                             <button
                                 onClick={() => navigate('/login')}
                                 className="rounded-lg px-4 py-2 text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
                             >
-                                Back to log in
+                                {tg.checkEmail.backToLogin}
                             </button>
                         </div>
                     </div>
@@ -182,11 +172,11 @@ function Getstarted() {
             <div className="w-full max-w-md">
                 <div className="mb-8 flex flex-col items-center text-center">
                     <img src="/logo-white.png" width={36} height={36} alt="" />
-                    <h1 className="mt-4 text-2xl font-semibold tracking-tight">Create your account</h1>
+                    <h1 className="mt-4 text-2xl font-semibold tracking-tight">{tg.title}</h1>
                     <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
                         {invitePreview
                             ? `${invitePreview.inviter_name} invited you to ${invitePreview.chat_name}.`
-                            : "Start free. Bring models and teammates into the same chat."}
+                            : tg.subtitle}
                     </p>
                 </div>
 
@@ -201,9 +191,9 @@ function Getstarted() {
                     )}
 
                     <Field
-                        label="Email"
+                        label={tg.email}
                         type="email"
-                        placeholder="you@company.com"
+                        placeholder={tg.emailPlaceholder}
                         value={email}
                         onChange={setEmail}
                         readOnly={Boolean(invitePreview)}
@@ -211,32 +201,32 @@ function Getstarted() {
 
                     <div className="grid grid-cols-2 gap-3">
                         <Field
-                            label="First name"
+                            label={tg.firstName}
                             type="text"
-                            placeholder="Marwan"
+                            placeholder={tg.firstNamePlaceholder}
                             value={firstName}
                             onChange={setFirstName}
                         />
                         <Field
-                            label="Last name"
+                            label={tg.lastName}
                             type="text"
-                            placeholder="Alhindi"
+                            placeholder={tg.lastNamePlaceholder}
                             value={lastName}
                             onChange={setLastName}
                         />
                     </div>
 
                     <Field
-                        label="Password"
+                        label={tg.password}
                         type="password"
-                        placeholder="At least 6 characters"
+                        placeholder={tg.passwordPlaceholder}
                         value={password}
                         onChange={setPassword}
                     />
                     <Field
-                        label="Confirm password"
+                        label={tg.confirmPassword}
                         type="password"
-                        placeholder="••••••••"
+                        placeholder={tg.confirmPasswordPlaceholder}
                         value={confirmPassword}
                         onChange={setConfirmPassword}
                     />
@@ -246,22 +236,22 @@ function Getstarted() {
                         disabled={loading}
                         className="group inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition-all hover:bg-[var(--color-brand)] disabled:opacity-60"
                     >
-                        {loading ? 'Creating account…' : 'Create account'}
-                        {!loading && <span className="transition-transform group-hover:translate-x-0.5">→</span>}
+                        {loading ? tg.creatingAccount : tg.createAccount}
+                        {!loading && <span className="transition-transform group-hover:translate-x-0.5 rtl:rotate-180">{t.arrow}</span>}
                     </button>
 
                     <p className="text-center text-[11px] text-[var(--color-fg-subtle)]">
-                        By continuing, you agree to Glyph's Terms and Privacy.
+                        {tg.terms}
                     </p>
                 </form>
 
                 <p className="mt-6 text-center text-sm text-[var(--color-fg-muted)]">
-                    Already have an account?{' '}
+                    {tg.alreadyHave}{' '}
                     <button
                         onClick={() => navigate('/login')}
                         className="text-[var(--color-fg)] underline-offset-4 hover:underline"
                     >
-                        Log in
+                        {tg.logIn}
                     </button>
                 </p>
             </div>

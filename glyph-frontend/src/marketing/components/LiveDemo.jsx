@@ -1,87 +1,42 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 const CYCLE_MS = 7000
 const HOLD_MS = 3500
 
-const FOLLOW_UP = {
-    person: { name: "Sara", avatar: "S", isMe: false },
-    prompt: "Nice — that's the launch covered. Speak to @Atlas for review or revisions.",
-    mentionTarget: "Atlas",
-    mentionColor: "text-sky-300",
-    startMs: 5100,
-    typeMs: 1300,
-}
-
-const THREADS = [
-    {
-        person: { name: "Marwan", avatar: "M", isMe: true },
-        prompt: "@Aria design the launch hero — clean, dark, emerald accent.",
-        mentionTarget: "Aria",
-        startMs: 0,
-        typeMs: 800,
-        llm: {
-            name: "Aria",
-            model: "GPT-4o",
-            color: {
-                ring: "ring-emerald-500/60",
-                dot: "bg-emerald-400",
-                text: "text-emerald-300",
-                soft: "bg-emerald-500/[0.07]",
-                border: "border-emerald-500/30",
-            },
-            thinkFromMs: 1100,
-            artifactFromMs: 2900,
-            artifact: 'design',
-        },
-    },
-    {
-        person: { name: "Sara", avatar: "S", isMe: false },
-        prompt: "@Nova code the hover keyframes for that button.",
-        mentionTarget: "Nova",
-        startMs: 500,
-        typeMs: 800,
-        llm: {
-            name: "Nova",
-            model: "Claude",
-            color: {
-                ring: "ring-violet-500/60",
-                dot: "bg-violet-400",
-                text: "text-violet-300",
-                soft: "bg-violet-500/[0.07]",
-                border: "border-violet-500/30",
-            },
-            thinkFromMs: 1600,
-            artifactFromMs: 3600,
-            artifact: 'code',
-        },
-    },
-    {
-        person: { name: "Jamie", avatar: "J", isMe: false },
-        prompt: "@Atlas wrap it all into a launch-plan PDF.",
-        mentionTarget: "Atlas",
-        startMs: 1000,
-        typeMs: 800,
-        llm: {
-            name: "Atlas",
-            model: "Gemini",
-            color: {
-                ring: "ring-sky-500/60",
-                dot: "bg-sky-400",
-                text: "text-sky-300",
-                soft: "bg-sky-500/[0.07]",
-                border: "border-sky-500/30",
-            },
-            thinkFromMs: 2100,
-            artifactFromMs: 4300,
-            artifact: 'pdf',
-        },
-    },
+const THREAD_TIMINGS = [
+    { startMs: 0,    typeMs: 800, llm: { name: "Aria",  model: "GPT-4o", color: { ring: "ring-emerald-500/60", dot: "bg-emerald-400", text: "text-emerald-300", soft: "bg-emerald-500/[0.07]", border: "border-emerald-500/30" }, thinkFromMs: 1100, artifactFromMs: 2900, artifact: 'design' } },
+    { startMs: 500,  typeMs: 800, llm: { name: "Nova",  model: "Claude", color: { ring: "ring-violet-500/60", dot: "bg-violet-400", text: "text-violet-300", soft: "bg-violet-500/[0.07]", border: "border-violet-500/30" }, thinkFromMs: 1600, artifactFromMs: 3600, artifact: 'code'   } },
+    { startMs: 1000, typeMs: 800, llm: { name: "Atlas", model: "Gemini", color: { ring: "ring-sky-500/60",    dot: "bg-sky-400",    text: "text-sky-300",    soft: "bg-sky-500/[0.07]",    border: "border-sky-500/30"    }, thinkFromMs: 2100, artifactFromMs: 4300, artifact: 'pdf'    } },
 ]
+const FOLLOW_UP_TIMING = { mentionColor: "text-sky-300", startMs: 5100, typeMs: 1300 }
 
 function LiveDemo() {
     const sectionRef = useRef(null)
     const [inView, setInView] = useState(false)
     const [elapsed, setElapsed] = useState(0)
+    const { t } = useLanguage()
+    const ld = t.liveDemo
+    const demoThreads = t.demo.liveDemo.threads
+    const demoFollowUp = t.demo.liveDemo.followUp
+
+    const THREADS = useMemo(() => THREAD_TIMINGS.map((timing, i) => ({
+        person: { name: demoThreads[i].personName, avatar: demoThreads[i].personAvatar, isMe: demoThreads[i].isMe },
+        prompt: demoThreads[i].prompt,
+        mentionTarget: demoThreads[i].mentionTarget,
+        startMs: timing.startMs,
+        typeMs: timing.typeMs,
+        llm: timing.llm,
+    })), [demoThreads])
+
+    const FOLLOW_UP = useMemo(() => ({
+        person: { name: demoFollowUp.personName, avatar: demoFollowUp.personAvatar, isMe: demoFollowUp.isMe },
+        prompt: demoFollowUp.prompt,
+        mentionTarget: demoFollowUp.mentionTarget,
+        mentionColor: FOLLOW_UP_TIMING.mentionColor,
+        startMs: FOLLOW_UP_TIMING.startMs,
+        typeMs: FOLLOW_UP_TIMING.typeMs,
+    }), [demoFollowUp])
 
     useEffect(() => {
         const el = sectionRef.current
@@ -132,13 +87,13 @@ function LiveDemo() {
             {/* Header */}
             <div className="text-center">
                 <h2 className="font-[var(--font-display)] text-3xl font-semibold tracking-tight md:text-4xl">
-                    One thread.{' '}
+                    {ld.headline1}{' '}
                     <span className="bg-gradient-to-r from-emerald-300 via-violet-300 to-sky-300 bg-clip-text text-transparent">
-                        Parallel work.
+                        {ld.headline2}
                     </span>
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-sm text-[var(--color-fg-muted)] md:text-base">
-                    Three asks, three deliverables — happening live in the same chat.
+                    {ld.subtitle}
                 </p>
             </div>
 
@@ -155,7 +110,7 @@ function LiveDemo() {
                         </div>
                         <div className="flex items-center gap-2 text-xs text-[var(--color-fg-subtle)]">
                             <span className="font-medium text-[var(--color-fg-muted)]">launch-plan</span>
-                            <span>· 3 humans · 3 models</span>
+                            <span>{ld.windowSubtitle}</span>
                         </div>
                         <div className="w-12" />
                     </div>
@@ -164,7 +119,7 @@ function LiveDemo() {
                     <div className="relative flex items-center justify-center gap-2 border-b border-[var(--color-line-soft)] bg-gradient-to-r from-emerald-500/[0.04] via-violet-500/[0.04] to-sky-500/[0.04] px-4 py-2">
                         <ShareIcon />
                         <span className="text-[11px] text-[var(--color-fg-muted)]">
-                            Shared context — every message and every output is visible to all 6
+                            {ld.sharedContext}
                         </span>
                         <div className="pointer-events-none absolute inset-x-0 -bottom-px h-px overflow-hidden">
                             <div className="ld-shared-pulse h-full w-1/3 bg-gradient-to-r from-transparent via-emerald-300/70 to-transparent" />
@@ -174,9 +129,9 @@ function LiveDemo() {
                     {/* Two panes */}
                     <div className="grid min-h-[520px] grid-cols-1 md:grid-cols-2">
                         {/* Team (left) */}
-                        <div className="space-y-5 border-b border-[var(--color-line-soft)] p-5 md:border-b-0 md:border-r">
+                        <div className="space-y-5 border-b border-[var(--color-line-soft)] p-5 md:border-b-0 md:border-e">
                             <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                                Team
+                                {ld.team}
                             </div>
                             {THREADS.map((thread, i) => (
                                 <UserBubble
@@ -204,10 +159,10 @@ function LiveDemo() {
                         {/* Models (right) */}
                         <div className="space-y-3 p-5">
                             <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                                Models
+                                {ld.models}
                             </div>
                             {THREADS.map((thread, i) => (
-                                <ModelCard key={i} thread={thread} elapsed={elapsed} />
+                                <ModelCard key={i} thread={thread} elapsed={elapsed} waitingLabel={ld.waiting} />
                             ))}
                         </div>
                     </div>
@@ -275,7 +230,7 @@ function PromptText({ text, mentionStart, mentionEnd, mentionColor }) {
     return <>{parts}</>
 }
 
-function ModelCard({ thread, elapsed }) {
+function ModelCard({ thread, elapsed, waitingLabel }) {
     const { llm } = thread
     const isWaiting = elapsed < llm.thinkFromMs
     const isThinking = elapsed >= llm.thinkFromMs && elapsed < llm.artifactFromMs
@@ -294,11 +249,11 @@ function ModelCard({ thread, elapsed }) {
                 <span className={`text-xs font-medium ${llm.color.text}`}>{llm.name}</span>
                 <span className="text-[10px] text-[var(--color-fg-subtle)]">· {llm.model}</span>
                 <span
-                    className={`ml-auto h-1.5 w-1.5 rounded-full ${llm.color.dot} ${isThinking ? 'animate-pulse' : ''} ${isWaiting ? 'opacity-30' : ''}`}
+                    className={`ms-auto h-1.5 w-1.5 rounded-full ${llm.color.dot} ${isThinking ? 'animate-pulse' : ''} ${isWaiting ? 'opacity-30' : ''}`}
                 />
             </div>
             <div className="text-sm leading-relaxed text-[var(--color-fg)]">
-                {isWaiting && <Placeholder />}
+                {isWaiting && <Placeholder label={waitingLabel} />}
                 {isThinking && <ThinkingDots colorClass={llm.color.dot} />}
                 {isDelivered && <Artifact kind={llm.artifact} />}
             </div>
@@ -316,8 +271,8 @@ function ThinkingDots({ colorClass }) {
     )
 }
 
-function Placeholder() {
-    return <p className="text-[11px] italic text-[var(--color-fg-subtle)]">Waiting for prompt…</p>
+function Placeholder({ label }) {
+    return <p className="text-[11px] italic text-[var(--color-fg-subtle)]">{label}</p>
 }
 
 function Artifact({ kind }) {

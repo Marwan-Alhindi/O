@@ -1,10 +1,5 @@
 import { useMemo, useState } from "react"
-
-const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"]
-const MONTHS = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-]
+import { useLanguage } from "../../../contexts/LanguageContext"
 
 export function toDateKey(date) {
     const y = date.getFullYear()
@@ -14,6 +9,8 @@ export function toDateKey(date) {
 }
 
 function Calendar({ selectedKey, onSelect, hasNote }) {
+    const { t, lang } = useLanguage()
+    const pd = t.plannerDemo
     const today = useMemo(() => new Date(), [])
     const [viewYear, setViewYear] = useState(() => {
         if (selectedKey) return parseInt(selectedKey.slice(0, 4), 10)
@@ -55,13 +52,13 @@ function Calendar({ selectedKey, onSelect, hasNote }) {
         <section className="flex min-h-0 flex-1 flex-col bg-[var(--color-canvas)]">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                    Calendar
+                    {pd.calendar}
                 </span>
                 <button
                     onClick={goToToday}
                     className="text-[11px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
                 >
-                    Today
+                    {pd.todayBtn}
                 </button>
             </div>
 
@@ -72,22 +69,22 @@ function Calendar({ selectedKey, onSelect, hasNote }) {
                         className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
                         aria-label="Previous month"
                     >
-                        <ChevronIcon dir="left" />
+                        <ChevronIcon dir={lang === 'ar' ? 'right' : 'left'} />
                     </button>
                     <div className="text-sm font-semibold text-[var(--color-fg)]">
-                        {MONTHS[viewMonth]} {viewYear}
+                        {pd.months[viewMonth]} {viewYear}
                     </div>
                     <button
                         onClick={() => shiftMonth(1)}
                         className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
                         aria-label="Next month"
                     >
-                        <ChevronIcon dir="right" />
+                        <ChevronIcon dir={lang === 'ar' ? 'left' : 'right'} />
                     </button>
                 </div>
 
                 <div className="grid grid-cols-7 gap-1 text-center">
-                    {WEEKDAYS.map((d, i) => (
+                    {pd.weekdays.map((d, i) => (
                         <div key={i} className="py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
                             {d}
                         </div>
@@ -122,11 +119,11 @@ function Calendar({ selectedKey, onSelect, hasNote }) {
                 <div className="mt-4 flex items-center justify-center gap-3 text-[10px] text-[var(--color-fg-subtle)]">
                     <span className="inline-flex items-center gap-1.5">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                        has note
+                        {pd.hasNote}
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                         <span className="h-2 w-2 rounded-sm border border-[var(--color-fg-subtle)]" />
-                        today
+                        {pd.today}
                     </span>
                 </div>
             </div>

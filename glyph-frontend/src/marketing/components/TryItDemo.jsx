@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, Fragment } from "react"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 const GROUP_KEYS = {
     chat: ['team', 'models', 'files'],
@@ -12,6 +13,8 @@ function TryItDemo() {
     const [inView, setInView] = useState(false)
     const [interacted, setInteracted] = useState(false)
     const [viewGroup, setViewGroup] = useState('chat')
+    const { t, lang } = useLanguage()
+    const td = t.tryItDemo
     const [openPanels, setOpenPanels] = useState({
         team: true, models: true, files: true,
         calendar: true, daily: true, agent: true,
@@ -40,7 +43,7 @@ function TryItDemo() {
             const container = splitRef.current
             if (!container) return
             const rect = container.getBoundingClientRect()
-            const deltaPx = e.clientX - activeResize.startX
+            const deltaPx = (e.clientX - activeResize.startX) * (lang === 'ar' ? -1 : 1)
             const deltaPct = (deltaPx / rect.width) * 100
             const MIN = 18
             let newLeft = activeResize.startLeft + deltaPct
@@ -158,11 +161,11 @@ function TryItDemo() {
 
             <div className="text-center">
                 <h2 className="font-[var(--font-display)] text-3xl font-semibold tracking-tight md:text-4xl">
-                    Make it{' '}
-                    <span className="bg-gradient-to-r from-emerald-300 via-violet-300 to-sky-300 bg-clip-text text-transparent">your own.</span>
+                    {td.headline1}{' '}
+                    <span className="bg-gradient-to-r from-emerald-300 via-violet-300 to-sky-300 bg-clip-text text-transparent">{td.headline2}</span>
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-sm text-[var(--color-fg-muted)] md:text-base">
-                    Switch between Chat and Planner. Toggle panels. Drag dividers.
+                    {td.subtitle}
                 </p>
             </div>
 
@@ -179,31 +182,31 @@ function TryItDemo() {
                         </div>
                         <div className="hidden text-xs text-[var(--color-fg-subtle)] md:block">
                             <span className="font-medium text-[var(--color-fg-muted)]">{GROUP_TITLES[viewGroup]}</span>
-                            <span className="ml-2 text-[var(--color-fg-subtle)]">· {viewGroup === 'chat' ? 'team chat' : 'planner'}</span>
+                            <span className="ms-2 text-[var(--color-fg-subtle)]">· {viewGroup === 'chat' ? td.teamChat : td.plannerLabel}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             {showHint && (
                                 <span className="try-it-pulse hidden items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-medium text-emerald-200 md:inline-flex">
-                                    Try it
-                                    <span className="text-base leading-none">→</span>
+                                    {td.tryIt}
+                                    <span className="text-base leading-none">{t.arrow}</span>
                                 </span>
                             )}
                             <div className={`hidden items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 md:flex ${showHint ? 'try-it-ring' : ''}`}>
-                                <GroupBtn active={viewGroup === 'chat'} onClick={() => switchGroup('chat')} icon={<ChatBubbleIcon />}>Chat</GroupBtn>
-                                <GroupBtn active={viewGroup === 'planner'} onClick={() => switchGroup('planner')} icon={<CalendarIcon />}>Planner</GroupBtn>
+                                <GroupBtn active={viewGroup === 'chat'} onClick={() => switchGroup('chat')} icon={<ChatBubbleIcon />}>{td.chat}</GroupBtn>
+                                <GroupBtn active={viewGroup === 'planner'} onClick={() => switchGroup('planner')} icon={<CalendarIcon />}>{td.planner}</GroupBtn>
                             </div>
                             <div className="flex items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5">
                                 {viewGroup === 'chat' ? (
                                     <>
-                                        <ToggleBtn active={openPanels.team} onClick={() => togglePanel('team')} label="Team"><PeopleIcon /></ToggleBtn>
-                                        <ToggleBtn active={openPanels.models} onClick={() => togglePanel('models')} label="Workspace"><BotIcon /></ToggleBtn>
-                                        <ToggleBtn active={openPanels.files} onClick={() => togglePanel('files')} label="Files"><FileIcon /></ToggleBtn>
+                                        <ToggleBtn active={openPanels.team} onClick={() => togglePanel('team')} label={td.panels.team}><PeopleIcon /></ToggleBtn>
+                                        <ToggleBtn active={openPanels.models} onClick={() => togglePanel('models')} label={td.panels.workspace}><BotIcon /></ToggleBtn>
+                                        <ToggleBtn active={openPanels.files} onClick={() => togglePanel('files')} label={td.panels.files}><FileIcon /></ToggleBtn>
                                     </>
                                 ) : (
                                     <>
-                                        <ToggleBtn active={openPanels.calendar} onClick={() => togglePanel('calendar')} label="Calendar"><CalendarIcon /></ToggleBtn>
-                                        <ToggleBtn active={openPanels.daily} onClick={() => togglePanel('daily')} label="Daily note"><NoteIcon /></ToggleBtn>
-                                        <ToggleBtn active={openPanels.agent} onClick={() => togglePanel('agent')} label="Agent"><SparkIcon /></ToggleBtn>
+                                        <ToggleBtn active={openPanels.calendar} onClick={() => togglePanel('calendar')} label={td.panels.calendar}><CalendarIcon /></ToggleBtn>
+                                        <ToggleBtn active={openPanels.daily} onClick={() => togglePanel('daily')} label={td.panels.daily}><NoteIcon /></ToggleBtn>
+                                        <ToggleBtn active={openPanels.agent} onClick={() => togglePanel('agent')} label={td.panels.agent}><SparkIcon /></ToggleBtn>
                                     </>
                                 )}
                             </div>
@@ -245,46 +248,56 @@ function TryItDemo() {
 
 /* ---------- Mini panel content ---------- */
 
-function TeamMini() {
+const MINI_MENTION_COLORS = { Aria: 'text-emerald-300', Nova: 'text-violet-300', Atlas: 'text-sky-300' }
+
+function MiniMentionText({ text }) {
+    const parts = text.split(/(@\w+)/g)
     return (
         <>
-            <div className="border-b border-[var(--color-line-soft)] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">Team</div>
+            {parts.map((p, i) => {
+                const name = p.startsWith('@') ? p.slice(1) : null
+                const color = name && MINI_MENTION_COLORS[name]
+                return color ? <span key={i} className={`font-medium ${color}`}>{p}</span> : <span key={i}>{p}</span>
+            })}
+        </>
+    )
+}
+
+function TeamMini() {
+    const { t } = useLanguage()
+    const demo = t.demo.tryItDemo
+    return (
+        <>
+            <div className="border-b border-[var(--color-line-soft)] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">{t.tryItDemo.panels.team}</div>
             <div className="flex-1 space-y-4 overflow-hidden p-4">
-                <Bubble who="Marwan" me>
-                    <span className="font-medium text-emerald-300">@Aria</span> design the launch hero — clean, dark, emerald accent.
-                </Bubble>
-                <Bubble who="Sara">+1 — let's keep it concise.</Bubble>
-                <Bubble who="Jamie">
-                    Speak to <span className="font-medium text-sky-300">@Atlas</span> for any tweaks.
-                </Bubble>
+                <Bubble who="Marwan" me><MiniMentionText text={demo.teamMsg1} /></Bubble>
+                <Bubble who="Sara">{demo.teamMsg2}</Bubble>
+                <Bubble who="Jamie"><MiniMentionText text={demo.teamMsg3} /></Bubble>
             </div>
         </>
     )
 }
 
 function ModelsMini() {
+    const { t } = useLanguage()
+    const demo = t.demo.tryItDemo
     return (
         <>
-            <div className="border-b border-[var(--color-line-soft)] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">Models</div>
+            <div className="border-b border-[var(--color-line-soft)] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">{t.tryItDemo.panels.workspace}</div>
             <div className="flex-1 space-y-2.5 overflow-hidden p-4">
-                <ModelCard name="Aria" model="GPT-4o" tone="emerald">
-                    Three lines, ready. Built for teams that ship.
-                </ModelCard>
-                <ModelCard name="Nova" model="Claude" tone="violet">
-                    Pricing reads clean. Try "per teammate" instead of "per seat".
-                </ModelCard>
-                <ModelCard name="Atlas" model="Gemini" tone="sky">
-                    Compiled launch-plan.pdf — find it in Files.
-                </ModelCard>
+                <ModelCard name="Aria" model="GPT-4o" tone="emerald">{demo.modelMsg1}</ModelCard>
+                <ModelCard name="Nova" model="Claude" tone="violet">{demo.modelMsg2}</ModelCard>
+                <ModelCard name="Atlas" model="Gemini" tone="sky">{demo.modelMsg3}</ModelCard>
             </div>
         </>
     )
 }
 
 function FilesMini() {
+    const { t } = useLanguage()
     return (
         <>
-            <div className="border-b border-[var(--color-line-soft)] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">Files</div>
+            <div className="border-b border-[var(--color-line-soft)] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">{t.tryItDemo.panels.files}</div>
             <div className="flex-1 space-y-2 overflow-hidden p-4">
                 <FileRow name="launch-plan.pdf" ext="pdf" />
                 <FileRow name="hero-mock-v1.png" ext="png" />
@@ -307,10 +320,12 @@ const MAY_2026 = [
 function CalendarMini() {
     const today = 5
     const wed = 7
+    const { t } = useLanguage()
+    const pd = t.plannerDemo
     return (
         <>
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">Calendar</span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">{pd.calendar}</span>
                 <span className="text-[10px] text-[var(--color-fg-subtle)]">May 2026</span>
             </div>
             <div className="flex-1 overflow-hidden p-4">
@@ -349,11 +364,11 @@ function CalendarMini() {
                 <div className="mt-4 space-y-1.5 text-[10px] text-[var(--color-fg-subtle)]">
                     <div className="flex items-center gap-1.5">
                         <span className="h-1 w-1 rounded-full bg-emerald-400" />
-                        <span>day with note</span>
+                        <span>{pd.dayWithNote}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <span className="h-2 w-2 rounded-sm border border-emerald-500/50" />
-                        <span>today</span>
+                        <span>{pd.today}</span>
                     </div>
                 </div>
             </div>
@@ -362,28 +377,29 @@ function CalendarMini() {
 }
 
 function DailyNoteMini() {
+    const { t } = useLanguage()
+    const pd = t.plannerDemo
+    const demo = t.demo.tryItDemo
     return (
         <>
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Daily note
+                        {pd.dailyNote}
                     </span>
                     <span className="text-[11px] text-[var(--color-fg-subtle)]">·</span>
-                    <span className="text-[11px] text-[var(--color-fg-muted)]">Tue · May 5</span>
+                    <span className="text-[11px] text-[var(--color-fg-muted)]">{demo.dailyNoteDate}</span>
                 </div>
-                <span className="text-[10px] text-[var(--color-fg-subtle)]">3 tasks</span>
+                <span className="text-[10px] text-[var(--color-fg-subtle)]">3 {pd.tasks}</span>
             </div>
             <div className="flex-1 space-y-3 overflow-hidden px-5 py-4 font-mono text-[12px] leading-relaxed">
-                <div className="text-[var(--color-fg-subtle)]"># Today · May 5</div>
+                <div className="text-[var(--color-fg-subtle)]"># {demo.dailyNoteDate}</div>
                 <div className="text-[var(--color-fg-subtle)]">## Tasks</div>
                 <ul className="space-y-1">
-                    <NoteTaskLine text="Draft hero copy" />
-                    <NoteTaskLine text="Pick color palette" />
-                    <NoteTaskLine text="Sketch hero layout" />
+                    {demo.dailyNoteTasks.map((text, i) => <NoteTaskLine key={i} text={text} />)}
                 </ul>
                 <div className="text-[var(--color-fg-subtle)]">## Note</div>
-                <p className="text-[var(--color-fg)]">Focus: punchy hero, calm palette.</p>
+                <p className="text-[var(--color-fg)]">{demo.dailyNoteNote}</p>
             </div>
         </>
     )
@@ -398,35 +414,32 @@ function NoteTaskLine({ text }) {
     )
 }
 
-const AGENT_MINI_PLAN = [
-    { day: 'today', text: "Draft hero copy", status: "done" },
-    { day: 'today', text: "Pick color palette", status: "done" },
-    { day: 'wed', text: "Design hero mockup", status: "working", deps: ["Draft hero copy", "Pick color palette"] },
-    { day: 'today', text: "Sketch hero layout", status: "queued" },
-    { day: 'wed', text: "Write pricing outline", status: "queued" },
-]
+const AGENT_MINI_DAYS = ['today', 'today', 'wed', 'today', 'wed']
 
 function AgentMini() {
-    const doneCount = AGENT_MINI_PLAN.filter(p => p.status === "done").length
+    const { t } = useLanguage()
+    const pd = t.plannerDemo
+    const agentMiniPlan = t.demo.plannerDemo.agentMiniPlan.map((item, i) => ({ ...item, day: AGENT_MINI_DAYS[i] }))
+    const doneCount = agentMiniPlan.filter(p => p.status === "done").length
     return (
         <>
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">Agent</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">{pd.agent}</span>
                     <span className="text-[11px] text-[var(--color-fg-subtle)]">·</span>
-                    <span className="text-[11px] text-[var(--color-fg-muted)]">Working — {doneCount}/{AGENT_MINI_PLAN.length}</span>
+                    <span className="text-[11px] text-[var(--color-fg-muted)]">{pd.agentHeader.working(doneCount, agentMiniPlan.length)}</span>
                 </div>
                 <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    running
+                    {pd.running}
                 </span>
             </div>
             <div className="flex-1 overflow-hidden px-4 py-3.5">
                 <div className="mb-2 rounded-md border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-2.5 py-1.5 text-[10px] leading-relaxed text-[var(--color-fg-muted)]">
-                    Picking ready tasks first — Today's #3 waits while Thu's mock starts early.
+                    {pd.planNote}
                 </div>
                 <ol className="space-y-1.5">
-                    {AGENT_MINI_PLAN.map((entry, i) => (
+                    {agentMiniPlan.map((entry, i) => (
                         <PlanItemMini key={i} index={i} entry={entry} />
                     ))}
                 </ol>
@@ -438,6 +451,7 @@ function AgentMini() {
 function PlanItemMini({ index, entry }) {
     const isDone = entry.status === "done"
     const isWorking = entry.status === "working"
+    const { t } = useLanguage()
     return (
         <li
             className={[
@@ -457,12 +471,12 @@ function PlanItemMini({ index, entry }) {
                             {entry.text}
                         </span>
                         <span className={`text-[9px] uppercase tracking-wider ${entry.day === "today" ? "text-emerald-300/80" : "text-violet-300/80"}`}>
-                            {entry.day === "today" ? "Today" : "Thu"}
+                            {entry.day === "today" ? t.plannerDemo.today : "Thu"}
                         </span>
                     </div>
                     {entry.deps && !isDone && (
                         <div className="mt-0.5 text-[9px] text-[var(--color-fg-subtle)]">
-                            needs: {entry.deps.join(", ")}
+                            {t.plannerDemo.needs} {entry.deps.join(", ")}
                         </div>
                     )}
                 </div>

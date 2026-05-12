@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { API_BASE } from "../../../services/supabase"
 import { useAuth } from "../../../contexts/AuthContext"
+import { useLanguage } from "../../../contexts/LanguageContext"
 
 function countOpenTasks(markdown) {
     if (!markdown) return 0
@@ -17,9 +18,11 @@ function formatDateLabel(dateKey) {
 
 function Agent({ chatId, notes }) {
     const { session } = useAuth()
-    const [phase, setPhase] = useState("idle") // idle | thinking | running | done | error
+    const { t } = useLanguage()
+    const pd = t.plannerDemo
+    const [phase, setPhase] = useState("idle")
     const [summary, setSummary] = useState("")
-    const [plan, setPlan] = useState([]) // [{date, task, depends_on, rationale, _status}]
+    const [plan, setPlan] = useState([])
     const [error, setError] = useState(null)
     const cancelRef = useRef(false)
 
@@ -99,21 +102,23 @@ function Agent({ chatId, notes }) {
         setError(null)
     }
 
+    const phaseLabel = phase === "running" ? pd.agentRunning(doneCount, plan.length)
+        : phase === "thinking" ? pd.agentReasoning
+        : phase === "done" && plan.length > 0 ? pd.agentDone(doneCount, plan.length)
+        : phase === "done" ? pd.agentNoTasks
+        : phase === "error" ? pd.agentError
+        : pd.agentSummary(totalOpenTasks, days.length)
+
     return (
         <section className="flex min-h-0 flex-1 flex-col border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:border-l">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Agent
+                        {pd.agent}
                     </span>
                     <span className="text-[11px] text-[var(--color-fg-subtle)]">·</span>
                     <span className="truncate text-[11px] text-[var(--color-fg-muted)]">
-                        {phase === "running" ? `Working — ${doneCount}/${plan.length}` :
-                         phase === "thinking" ? "Reasoning over your week…" :
-                         phase === "done" && plan.length > 0 ? `Done — ${doneCount}/${plan.length}` :
-                         phase === "done" ? "No open tasks" :
-                         phase === "error" ? "Error" :
-                         `${totalOpenTasks} open ${totalOpenTasks === 1 ? "task" : "tasks"} across ${days.length} ${days.length === 1 ? "day" : "days"}`}
+                        {phaseLabel}
                     </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -123,7 +128,7 @@ function Agent({ chatId, notes }) {
                             disabled={totalOpenTasks === 0}
                             className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-[11px] font-medium text-black hover:bg-[var(--color-brand)] disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                            <SparkIcon /> Run
+                            <SparkIcon /> {pd.run}
                         </button>
                     )}
                     {(phase === "done" || phase === "error") && (
@@ -131,7 +136,7 @@ function Agent({ chatId, notes }) {
                             onClick={reset}
                             className="rounded-md border border-[var(--color-line)] px-2.5 py-1 text-[11px] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]"
                         >
-                            Reset
+                            {pd.resetBtn}
                         </button>
                     )}
                 </div>
@@ -139,35 +144,34 @@ function Agent({ chatId, notes }) {
 
             <div className="lp-scroll flex-1 overflow-y-auto px-4 py-4">
                 {phase === "idle" && (
-                    <Idle totalOpenTasks={totalOpenTasks} days={days} onRun={run} />
+                    <Idle totalOpenTasks={totalOpenTasks} days={days} onRun={run} pd={pd} />
                 )}
-
-                {phase === "thinking" && <Thinking />}
-
+                {phase === "thinking" && <Thinking pd={pd} />}
                 {phase === "error" && (
                     <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
                         {error || "Something went wrong."}
                     </div>
                 )}
-
                 {(phase === "running" || phase === "done") && (
-                    <PlanList summary={summary} plan={plan} />
+                    <PlanList summary={summary} plan={plan} pd={pd} />
                 )}
             </div>
         </section>
     )
 }
 
-function Idle({ totalOpenTasks, days, onRun }) {
+function Idle({ totalOpenTasks, days, onRun, pd }) {
     if (totalOpenTasks === 0) {
         return (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center">
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-fg-subtle)]">
                     <SparkIcon size={18} />
                 </span>
-                <p className="mt-3 text-sm text-[var(--color-fg-muted)]">Nothing to plan yet</p>
+                <p className="mt-3 text-sm text-[var(--color-fg-muted)]">{pd.nothingToPlan}</p>
                 <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
-                    Add tasks in your daily notes — use <span className="rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 font-mono text-[10px]">- [ ]</span> for an open task.
+                    {pd.nothingToPlanDesc}{' '}
+                    <span className="rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 font-mono text-[10px]">{pd.nothingToPlanCode}</span>
+                    {' '}{pd.nothingToPlanSuffix}
                 </p>
             </div>
         )
@@ -175,13 +179,13 @@ function Idle({ totalOpenTasks, days, onRun }) {
     return (
         <div className="space-y-3">
             <div className="rounded-lg border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">Will read</div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">{pd.willRead}</div>
                 <ul className="mt-2 space-y-1">
                     {days.map(d => (
                         <li key={d.date} className="flex items-center justify-between text-xs">
                             <span className="text-[var(--color-fg)]">{formatDateLabel(d.date)}</span>
                             <span className="text-[var(--color-fg-subtle)]">
-                                {countOpenTasks(d.markdown)} open
+                                {pd.openCount(countOpenTasks(d.markdown))}
                             </span>
                         </li>
                     ))}
@@ -191,23 +195,23 @@ function Idle({ totalOpenTasks, days, onRun }) {
                 onClick={onRun}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-black hover:bg-[var(--color-brand)]"
             >
-                <SparkIcon /> Plan and run
+                <SparkIcon /> {pd.planAndRun}
             </button>
             <p className="text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
-                The agent reads every day's tasks, infers dependencies, and orders them so that ready tasks run first — even across days.
+                {pd.agentDesc}
             </p>
         </div>
     )
 }
 
-function Thinking() {
+function Thinking({ pd }) {
     return (
         <div className="space-y-3">
             <div className="flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" />
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" style={{ animationDelay: "0.16s" }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" style={{ animationDelay: "0.32s" }} />
-                <span className="ml-1">Reading your week and finding what's ready…</span>
+                <span className="ms-1">{pd.readingWeek}</span>
             </div>
             <SkeletonRow />
             <SkeletonRow />
@@ -225,10 +229,10 @@ function SkeletonRow() {
     )
 }
 
-function PlanList({ summary, plan }) {
+function PlanList({ summary, plan, pd }) {
     if (plan.length === 0) {
         return (
-            <p className="text-sm text-[var(--color-fg-muted)]">No open tasks were found across your days.</p>
+            <p className="text-sm text-[var(--color-fg-muted)]">{pd.noOpenTasks}</p>
         )
     }
     return (
@@ -240,14 +244,14 @@ function PlanList({ summary, plan }) {
             )}
             <ol className="space-y-2">
                 {plan.map((p, i) => (
-                    <PlanItem key={i} index={i} entry={p} />
+                    <PlanItem key={i} index={i} entry={p} pd={pd} />
                 ))}
             </ol>
         </div>
     )
 }
 
-function PlanItem({ index, entry }) {
+function PlanItem({ index, entry, pd }) {
     const status = entry._status || "queued"
     const isDone = status === "done"
     const isWorking = status === "working"
@@ -281,7 +285,7 @@ function PlanItem({ index, entry }) {
                     )}
                     {Array.isArray(entry.depends_on) && entry.depends_on.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                            <span className="text-[10px] text-[var(--color-fg-subtle)]">needs:</span>
+                            <span className="text-[10px] text-[var(--color-fg-subtle)]">{pd.needs}</span>
                             {entry.depends_on.map((d, j) => (
                                 <span key={j} className="rounded-sm border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-px text-[10px] text-[var(--color-fg-muted)]">
                                     {d}
@@ -320,14 +324,8 @@ function StatusBadge({ status, index }) {
 function SparkIcon({ size = 13 }) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2v4" />
-            <path d="M12 18v4" />
-            <path d="M2 12h4" />
-            <path d="M18 12h4" />
-            <path d="M5 5l2.8 2.8" />
-            <path d="M16.2 16.2L19 19" />
-            <path d="M5 19l2.8-2.8" />
-            <path d="M16.2 7.8L19 5" />
+            <path d="M12 2v4" /><path d="M12 18v4" /><path d="M2 12h4" /><path d="M18 12h4" />
+            <path d="M5 5l2.8 2.8" /><path d="M16.2 16.2L19 19" /><path d="M5 19l2.8-2.8" /><path d="M16.2 7.8L19 5" />
         </svg>
     )
 }

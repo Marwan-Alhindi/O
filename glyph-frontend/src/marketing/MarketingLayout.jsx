@@ -1,9 +1,11 @@
 import { Outlet } from 'react-router-dom'
 import Navigation from './components/Navigation'
 import { useState } from 'react'
+import { useLanguage } from '../contexts/LanguageContext'
 
 function MarketingLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { t } = useLanguage()
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-[var(--color-canvas)] text-[var(--color-fg)]">
@@ -38,12 +40,12 @@ function MarketingLayout() {
           <div className="flex items-center gap-2">
             <img src="/logo-white.png" width={20} height={20} alt="" />
             <span className="font-medium tracking-wide text-[var(--color-fg-muted)]">Glyph</span>
-            <span>· Collaborative LLMs</span>
+            <span>{t.footer.tagline}</span>
           </div>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-[var(--color-fg)]">Privacy</a>
-            <a href="#" className="hover:text-[var(--color-fg)]">Terms</a>
-            <a href="#" className="hover:text-[var(--color-fg)]">Docs</a>
+            <a href="#" className="hover:text-[var(--color-fg)]">{t.footer.privacy}</a>
+            <a href="#" className="hover:text-[var(--color-fg)]">{t.footer.terms}</a>
+            <a href="#" className="hover:text-[var(--color-fg)]">{t.footer.docs}</a>
           </div>
         </div>
       </footer>

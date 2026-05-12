@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Outlet, useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
+import { useLanguage } from "../contexts/LanguageContext"
 import { supabase, apiFetch } from "../services/supabase"
 
 function AppLayout() {
@@ -16,6 +17,8 @@ function AppLayout() {
     const skipNextRenameBlur = useRef(false)
 
     const { user, logout } = useAuth()
+    const { t, lang, setLang } = useLanguage()
+    const ta = t.app
     const navigate = useNavigate()
     const location = useLocation()
 
@@ -25,10 +28,6 @@ function AppLayout() {
 
     useEffect(() => { fetchChats() }, [user])
 
-    // After login/signup, claim any pending invitations addressed to the
-    // user's email. Covers users who created their account *after* being
-    // invited (or who first logged in with a different account and then made
-    // a new one). Idempotent on the backend.
     useEffect(() => {
         if (!user?.id) return
         let cancelled = false
@@ -42,7 +41,6 @@ function AppLayout() {
             })
             .catch(() => { /* best-effort */ })
         return () => { cancelled = true }
-    // Run once per user session — location/navigate don't need to retrigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.id])
 
@@ -56,7 +54,6 @@ function AppLayout() {
         return () => document.removeEventListener('mousedown', onClick)
     }, [])
 
-    // Pinned chats first (most-recently-pinned on top), then unpinned by joined_at desc.
     function sortChats(list) {
         return [...list].sort((a, b) => {
             if (a.pinned_at && !b.pinned_at) return -1
@@ -231,12 +228,12 @@ function AppLayout() {
                                 <LeaveIcon />
                             </span>
                             <div className="min-w-0">
-                                <p className="text-base font-semibold text-[var(--color-fg)]">Leave chat?</p>
+                                <p className="text-base font-semibold text-[var(--color-fg)]">{ta.leaveChat.title}</p>
                                 <p className="truncate text-xs text-[var(--color-fg-muted)]">"{leaveChatTarget.name}"</p>
                             </div>
                         </div>
                         <p className="mb-5 text-sm text-[var(--color-fg-muted)]">
-                            You'll stop receiving messages from this chat. You can rejoin later with the invite code.
+                            {ta.leaveChat.desc}
                         </p>
                         <div className="flex items-center justify-end gap-2">
                             <button
@@ -244,14 +241,14 @@ function AppLayout() {
                                 disabled={leavePending}
                                 className="rounded-lg px-3 py-2 text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)] disabled:opacity-40"
                             >
-                                Cancel
+                                {ta.leaveChat.cancel}
                             </button>
                             <button
                                 onClick={confirmLeaveChat}
                                 disabled={leavePending}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400 disabled:opacity-40"
                             >
-                                {leavePending ? 'Leaving…' : 'Leave chat'}
+                                {leavePending ? ta.leaveChat.leaving : ta.leaveChat.confirm}
                             </button>
                         </div>
                     </div>
@@ -262,7 +259,7 @@ function AppLayout() {
             <div className="hidden h-full md:flex">
                 {/* Sidebar */}
                 <aside
-                    className={`flex h-full shrink-0 flex-col border-r border-[var(--color-line-soft)] bg-[var(--color-surface-1)] transition-[width] duration-200 ${
+                    className={`flex h-full shrink-0 flex-col border-e border-[var(--color-line-soft)] bg-[var(--color-surface-1)] transition-[width] duration-200 ${
                         sidebarCollapsed ? 'w-14' : 'w-64'
                     }`}
                 >
@@ -279,7 +276,7 @@ function AppLayout() {
                             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                             className="rounded-md p-1.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
                         >
-                            <SidebarIcon collapsed={sidebarCollapsed} />
+                            <SidebarIcon collapsed={lang === 'ar' ? !sidebarCollapsed : sidebarCollapsed} />
                         </button>
                     </div>
 
@@ -290,10 +287,10 @@ function AppLayout() {
                             className={`flex w-full items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-2 text-sm text-[var(--color-fg)] hover:bg-[var(--color-surface-3)] ${
                                 sidebarCollapsed ? 'justify-center' : ''
                             }`}
-                            title="New chat"
+                            title={ta.newChat}
                         >
                             <PlusIcon />
-                            {!sidebarCollapsed && <span>New chat</span>}
+                            {!sidebarCollapsed && <span>{ta.newChat}</span>}
                         </button>
                     </div>
 
@@ -344,7 +341,7 @@ function AppLayout() {
                                         />
                                     ) : (
                                         <>
-                                            <span className="flex-1 truncate">{chat.name || 'Untitled'}</span>
+                                            <span className="flex-1 truncate">{chat.name || ta.untitled}</span>
                                             <button
                                                 onClick={(e) => handleTogglePin(chat, e)}
                                                 className={`rounded p-0.5 hover:bg-[var(--color-surface-3)] ${
@@ -352,21 +349,21 @@ function AppLayout() {
                                                         ? 'text-amber-400 opacity-100'
                                                         : 'text-[var(--color-fg-subtle)] opacity-0 hover:text-[var(--color-fg)] group-hover:opacity-100'
                                                 }`}
-                                                title={chat.pinned_at ? 'Unpin chat' : 'Pin chat'}
+                                                title={chat.pinned_at ? ta.unpinChat : ta.pinChat}
                                             >
                                                 <PinIcon size={12} filled={!!chat.pinned_at} />
                                             </button>
                                             <button
                                                 onClick={(e) => handleRenameStart(chat, e)}
                                                 className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)] group-hover:opacity-100"
-                                                title="Rename chat"
+                                                title={ta.renameChat}
                                             >
                                                 <PencilIcon size={12} />
                                             </button>
                                             <button
                                                 onClick={(e) => handleLeaveChat(chat, e)}
                                                 className="rounded p-0.5 text-[var(--color-fg-subtle)] opacity-0 hover:bg-[var(--color-surface-3)] hover:text-rose-400 group-hover:opacity-100"
-                                                title="Leave chat"
+                                                title={ta.leaveChatBtn}
                                             >
                                                 <CloseIcon size={12} />
                                             </button>
@@ -378,12 +375,12 @@ function AppLayout() {
 
                         return (
                             <div className="mt-4 flex min-h-0 flex-1 flex-col px-3">
-                                <div className="lp-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+                                <div className="lp-scroll min-h-0 flex-1 overflow-y-auto pe-1">
                                     {pinnedChats.length > 0 && (
                                         <div className="mb-3">
                                             <div className="mb-2 flex items-center justify-between px-1">
                                                 <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                                                    Pinned
+                                                    {ta.pinned}
                                                 </span>
                                                 <span className="text-[10px] text-[var(--color-fg-subtle)]">{pinnedChats.length}</span>
                                             </div>
@@ -395,14 +392,14 @@ function AppLayout() {
 
                                     <div className="mb-2 flex items-center justify-between px-1">
                                         <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                                            Conversations
+                                            {ta.conversations}
                                         </span>
                                         <span className="text-[10px] text-[var(--color-fg-subtle)]">{unpinnedChats.length}</span>
                                     </div>
                                     <div className="space-y-0.5">
                                         {chats.length === 0 && (
                                             <p className="px-2 py-3 text-xs text-[var(--color-fg-subtle)]">
-                                                No chats yet. Create one or join with a code.
+                                                {ta.noChats}
                                             </p>
                                         )}
                                         {unpinnedChats.map(renderRow)}
@@ -412,8 +409,28 @@ function AppLayout() {
                         )
                     })()}
 
-                    {/* User */}
+                    {/* User + lang toggle */}
                     <div className="relative mt-auto border-t border-[var(--color-line-soft)] p-2" ref={userMenuRef}>
+                        {/* Language toggle row */}
+                        {!sidebarCollapsed && (
+                            <button
+                                onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
+                                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
+                            >
+                                <GlobeIcon />
+                                <span>{lang === 'en' ? 'العربية' : 'English'}</span>
+                            </button>
+                        )}
+                        {sidebarCollapsed && (
+                            <button
+                                onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
+                                className="mb-1 flex w-full items-center justify-center rounded-lg px-2 py-1.5 text-xs text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]"
+                                title={lang === 'en' ? 'العربية' : 'English'}
+                            >
+                                <GlobeIcon />
+                            </button>
+                        )}
+
                         <button
                             onClick={() => setUserMenuOpen(!userMenuOpen)}
                             className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-[var(--color-surface-2)] ${
@@ -425,7 +442,7 @@ function AppLayout() {
                             </div>
                             {!sidebarCollapsed && (
                                 <>
-                                    <div className="flex-1 truncate text-left">
+                                    <div className="flex-1 truncate text-start">
                                         <div className="truncate text-sm font-medium">{firstName} {lastName}</div>
                                         <div className="truncate text-[10px] text-[var(--color-fg-subtle)]">{user?.email}</div>
                                     </div>
@@ -435,12 +452,12 @@ function AppLayout() {
                         </button>
 
                         {userMenuOpen && (
-                            <div className="absolute bottom-full left-2 right-2 mb-2 overflow-hidden rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl">
+                            <div className="absolute bottom-full start-2 end-2 mb-2 overflow-hidden rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl">
                                 <button
                                     onClick={handleLogout}
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
                                 >
-                                    <LogoutIcon /> Log out
+                                    <LogoutIcon /> {ta.logout}
                                 </button>
                             </div>
                         )}
@@ -458,6 +475,8 @@ function AppLayout() {
                             setValue={setLandingInput}
                             onSubmit={() => handleStartChatWithMessage(landingInput)}
                             onCreate={handleCreateChat}
+                            ta={ta}
+                            arrow={t.arrow}
                         />
                     )}
                 </main>
@@ -470,26 +489,34 @@ function AppLayout() {
                         <img src="/logo-white.png" width={22} height={22} alt="" />
                         <span className="text-sm font-semibold">Glyph</span>
                     </button>
-                    <button onClick={handleCreateChat} className="rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs">
-                        New chat
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
+                            className="rounded-lg border border-[var(--color-line)] px-2 py-1.5 text-xs text-[var(--color-fg-muted)]"
+                        >
+                            {ta.langLabel}
+                        </button>
+                        <button onClick={handleCreateChat} className="rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs">
+                            {ta.newChat}
+                        </button>
+                    </div>
                 </div>
 
                 {isInChat ? (
                     <Outlet context={{ sidebarCollapsed: true }} />
                 ) : (
                     <div className="flex-1 overflow-y-auto p-4">
-                        <h2 className="text-lg font-semibold tracking-tight">Hi {firstName}.</h2>
-                        <p className="mt-1 text-sm text-[var(--color-fg-muted)]">Pick a conversation or start a new one.</p>
+                        <h2 className="text-lg font-semibold tracking-tight">{ta.mobileGreeting(firstName)}</h2>
+                        <p className="mt-1 text-sm text-[var(--color-fg-muted)]">{ta.mobileSubtitle}</p>
                         <div className="mt-4 space-y-1">
                             {chats.map(chat => (
                                 <button
                                     key={chat.id}
                                     onClick={() => navigate(`/app/chat/${chat.id}`)}
-                                    className="flex w-full items-center justify-between rounded-lg border border-[var(--color-line-soft)] bg-[var(--color-surface-1)] px-3 py-2 text-left text-sm"
+                                    className="flex w-full items-center justify-between rounded-lg border border-[var(--color-line-soft)] bg-[var(--color-surface-1)] px-3 py-2 text-start text-sm"
                                 >
                                     <span className="truncate">{chat.name}</span>
-                                    <span className="text-xs text-[var(--color-fg-subtle)]">→</span>
+                                    <span className="text-xs text-[var(--color-fg-subtle)]">{t.arrow}</span>
                                 </button>
                             ))}
                         </div>
@@ -500,19 +527,19 @@ function AppLayout() {
     )
 }
 
-function EmptyLanding({ firstName, value, setValue, onSubmit, onCreate }) {
+function EmptyLanding({ firstName, value, setValue, onSubmit, onCreate, ta, arrow }) {
     return (
         <div className="lp-spotlight relative flex h-full items-center justify-center overflow-y-auto px-6 py-10">
             <div className="w-full max-w-2xl">
                 <div className="text-center">
                     <p className="text-xs font-medium uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Workspace
+                        {ta.workspace}
                     </p>
                     <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
-                        Hi {firstName}, what's on your mind?
+                        {ta.greeting(firstName)}
                     </h1>
                     <p className="mx-auto mt-2 max-w-md text-sm text-[var(--color-fg-muted)]">
-                        Start a new chat with your team and bring in any model.
+                        {ta.greetingSubtitle}
                     </p>
                 </div>
 
@@ -521,7 +548,7 @@ function EmptyLanding({ firstName, value, setValue, onSubmit, onCreate }) {
                     <div className="group relative rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-1)] p-1 shadow-2xl transition-colors focus-within:border-[var(--color-fg-subtle)]">
                         <textarea
                             rows={2}
-                            placeholder="Describe what you want to work on… ⏎ to start"
+                            placeholder={ta.inputPlaceholder}
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
                             onKeyDown={(e) => {
@@ -534,15 +561,15 @@ function EmptyLanding({ firstName, value, setValue, onSubmit, onCreate }) {
                         />
                         <div className="flex items-center justify-between border-t border-[var(--color-line-soft)] px-2 py-1.5">
                             <div className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)] px-1">
-                                <span>Tip:</span>
-                                <span>type @ in the chat to mention people or models</span>
+                                <span>{ta.tip}</span>
+                                <span>{ta.tipText}</span>
                             </div>
                             <button
                                 onClick={onSubmit}
                                 disabled={!value.trim()}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-black hover:bg-[var(--color-brand)] disabled:opacity-40"
                             >
-                                Start chat <span>→</span>
+                                {ta.startChat} <span>{arrow}</span>
                             </button>
                         </div>
                     </div>
@@ -550,7 +577,7 @@ function EmptyLanding({ firstName, value, setValue, onSubmit, onCreate }) {
 
                 {/* Quick actions */}
                 <div className="mt-6">
-                    <ActionCard onClick={onCreate} title="New empty chat" desc="Open a blank thread and invite people or models." />
+                    <ActionCard onClick={onCreate} title={ta.newEmptyChat} desc={ta.newEmptyChatDesc} />
                 </div>
             </div>
         </div>
@@ -561,7 +588,7 @@ function ActionCard({ onClick, title, desc }) {
     return (
         <button
             onClick={onClick}
-            className="rounded-xl border border-[var(--color-line-soft)] bg-[var(--color-surface-1)] p-4 text-left transition-colors hover:border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
+            className="rounded-xl border border-[var(--color-line-soft)] bg-[var(--color-surface-1)] p-4 text-start transition-colors hover:border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
         >
             <div className="text-sm font-medium text-[var(--color-fg)]">{title}</div>
             <div className="mt-1 text-xs text-[var(--color-fg-muted)]">{desc}</div>
@@ -624,6 +651,15 @@ function LeaveIcon() {
     return (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+    )
+}
+function GlobeIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
         </svg>
     )
 }

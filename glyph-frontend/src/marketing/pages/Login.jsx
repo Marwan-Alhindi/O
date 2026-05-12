@@ -1,5 +1,6 @@
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 import { useState } from "react"
 
 function Login() {
@@ -7,6 +8,8 @@ function Login() {
     const [searchParams] = useSearchParams()
     const inviteToken = searchParams.get("invite")
     const { login } = useAuth()
+    const { t } = useLanguage()
+    const tl = t.login
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
     const [error, setError] = useState("")
@@ -32,9 +35,9 @@ function Login() {
                 {/* Brand */}
                 <div className="mb-8 flex flex-col items-center text-center">
                     <img src="/logo-white.png" width={36} height={36} alt="" />
-                    <h1 className="mt-4 text-2xl font-semibold tracking-tight">Welcome back</h1>
+                    <h1 className="mt-4 text-2xl font-semibold tracking-tight">{tl.title}</h1>
                     <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-                        Log in to continue your conversations.
+                        {tl.subtitle}
                     </p>
                 </div>
 
@@ -50,16 +53,16 @@ function Login() {
                     )}
 
                     <Field
-                        label="Email"
+                        label={tl.email}
                         type="email"
-                        placeholder="you@company.com"
+                        placeholder={tl.emailPlaceholder}
                         value={email}
                         onChange={setEmail}
                     />
                     <Field
-                        label="Password"
+                        label={tl.password}
                         type="password"
-                        placeholder="••••••••"
+                        placeholder={tl.passwordPlaceholder}
                         value={password}
                         onChange={setPassword}
                     />
@@ -69,18 +72,18 @@ function Login() {
                         disabled={loading}
                         className="group inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition-all hover:bg-[var(--color-brand)] disabled:opacity-60"
                     >
-                        {loading ? 'Signing in…' : 'Continue'}
-                        {!loading && <span className="transition-transform group-hover:translate-x-0.5">→</span>}
+                        {loading ? tl.signingIn : tl.continue}
+                        {!loading && <span className="transition-transform group-hover:translate-x-0.5 rtl:rotate-180">{t.arrow}</span>}
                     </button>
                 </form>
 
                 <p className="mt-6 text-center text-sm text-[var(--color-fg-muted)]">
-                    New to Glyph?{' '}
+                    {tl.newToGlyph}{' '}
                     <button
                         onClick={() => navigate('/getstarted')}
                         className="text-[var(--color-fg)] underline-offset-4 hover:underline"
                     >
-                        Create an account
+                        {tl.createAccount}
                     </button>
                 </p>
             </div>

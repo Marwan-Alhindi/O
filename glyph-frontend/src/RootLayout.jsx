@@ -1,11 +1,14 @@
 import { Outlet } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { LanguageProvider } from './contexts/LanguageContext'
 
 function RootLayout() {
     return (
-        <AuthProvider>
-            <Outlet />
-        </AuthProvider>
+        <LanguageProvider>
+            <AuthProvider>
+                <Outlet />
+            </AuthProvider>
+        </LanguageProvider>
     )
 }
 

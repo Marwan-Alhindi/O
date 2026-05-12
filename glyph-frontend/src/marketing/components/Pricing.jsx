@@ -1,61 +1,10 @@
 import { useNavigate } from "react-router-dom"
-
-const PLANS = [
-    {
-        name: "Free",
-        price: "$0",
-        period: "/forever",
-        pitch: "For solo work and trying Glyph out.",
-        features: [
-            "1 workspace",
-            "Up to 3 teammates",
-            "2 models per chat",
-            "100 model messages / month",
-            "Glyph (auto) managed model",
-            "Community support",
-        ],
-        cta: { label: "Start free", action: "signup" },
-        featured: false,
-    },
-    {
-        name: "Team",
-        price: "$12",
-        period: "/user/month",
-        pitch: "For small teams shipping together.",
-        features: [
-            "Everything in Free, plus:",
-            "Unlimited workspaces & chats",
-            "Unlimited teammates per chat",
-            "All models — GPT-4o, Claude, Gemini",
-            "5,000 model messages / user / month",
-            "Email invitations & per-member permissions",
-            "Priority support",
-        ],
-        cta: { label: "Start 14-day trial", action: "signup" },
-        featured: true,
-        badge: "Most popular",
-    },
-    {
-        name: "Enterprise",
-        price: "Custom",
-        period: "",
-        pitch: "For organizations with security and scale needs.",
-        features: [
-            "Everything in Team, plus:",
-            "SSO / SAML",
-            "SCIM user provisioning",
-            "Audit logs",
-            "Custom data residency",
-            "Dedicated success manager",
-            "99.9% uptime SLA",
-        ],
-        cta: { label: "Contact sales", action: "sales" },
-        featured: false,
-    },
-]
+import { useLanguage } from "../../contexts/LanguageContext"
 
 function Pricing() {
     const navigate = useNavigate()
+    const { t } = useLanguage()
+    const pr = t.pricing
 
     function handleCta(action) {
         if (action === "signup") navigate("/getstarted")
@@ -66,24 +15,24 @@ function Pricing() {
         <section id="pricing" className="mt-28">
             <div className="text-center">
                 <h2 className="font-[var(--font-display)] text-3xl font-semibold tracking-tight md:text-4xl">
-                    Simple pricing.{' '}
+                    {pr.headline1}{' '}
                     <span className="bg-gradient-to-r from-emerald-300 via-violet-300 to-sky-300 bg-clip-text text-transparent">
-                        Real value.
+                        {pr.headline2}
                     </span>
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-sm text-[var(--color-fg-muted)] md:text-base">
-                    Start free. Upgrade when your team is shipping together.
+                    {pr.subtitle}
                 </p>
             </div>
 
             <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
-                {PLANS.map(plan => (
-                    <PricingCard key={plan.name} plan={plan} onCta={() => handleCta(plan.cta.action)} />
+                {pr.plans.map(plan => (
+                    <PricingCard key={plan.name} plan={plan} onCta={() => handleCta(plan.action)} />
                 ))}
             </div>
 
             <p className="mx-auto mt-8 max-w-xl text-center text-xs text-[var(--color-fg-subtle)]">
-                Prices in USD. All plans include real-time chat, multi-LLM threads, and shared context across humans and models.
+                {pr.footnote}
             </p>
         </section>
     )
@@ -147,7 +96,7 @@ function CardBody({ plan, onCta }) {
                         : "border border-[var(--color-line)] bg-transparent text-[var(--color-fg)] hover:border-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-2)]"
                 }`}
             >
-                {plan.cta.label}
+                {plan.cta}
                 <span>→</span>
             </button>
         </>

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 // Cycle: user types Today's tasks → switches to a future day → types those →
 // hits Run → agent reasons, then walks the plan in dependency order.
@@ -8,18 +9,18 @@ const HOLD_MS = 2400
 const DAY_TODAY = { key: "today", num: 5, label: "Today", sub: "Tue · May 5" }
 const DAY_WED = { key: "wed", num: 7, label: "Thu", sub: "Thu · May 7" }
 
-const TODAY_TASKS = [
-    { text: "Draft hero copy", typeFromMs: 300, typeMs: 800 },
-    { text: "Pick color palette", typeFromMs: 1200, typeMs: 850 },
-    { text: "Sketch hero layout", typeFromMs: 2150, typeMs: 850 },
+const TODAY_TASK_TIMINGS = [
+    { typeFromMs: 300, typeMs: 800 },
+    { typeFromMs: 1200, typeMs: 850 },
+    { typeFromMs: 2150, typeMs: 850 },
 ]
-const TODAY_NOTE = { text: "Focus: punchy hero, calm palette.", typeFromMs: 3100, typeMs: 900 }
+const TODAY_NOTE_TIMING = { typeFromMs: 3100, typeMs: 900 }
 
 const SWITCH_TO_WED_MS = 4150
 
-const WED_TASKS = [
-    { text: "Design hero mockup", typeFromMs: 4400, typeMs: 1000 },
-    { text: "Write pricing outline", typeFromMs: 5500, typeMs: 950 },
+const WED_TASK_TIMINGS = [
+    { typeFromMs: 4400, typeMs: 1000 },
+    { typeFromMs: 5500, typeMs: 950 },
 ]
 
 const RUN_CLICK_MS = 6900
@@ -29,22 +30,13 @@ const PLAN_WORKING_FROM_MS = 8900
 const STEP_DURATION_MS = 1100
 const STEP_GAP_MS = 250
 
-// Note the dependency-driven order: Wed #1 lands BEFORE today's #3 because
-// its prerequisites are already met. This is the magic of the agent.
-const AGENT_PLAN = [
-    { day: DAY_TODAY, text: "Draft hero copy", depends_on: [], rationale: "Foundational — unblocks the hero design." },
-    { day: DAY_TODAY, text: "Pick color palette", depends_on: [], rationale: "Independent — runs alongside copy." },
-    { day: DAY_WED, text: "Design hero mockup", depends_on: ["Draft hero copy", "Pick color palette"], rationale: "Prerequisites done — jumping ahead to Thu." },
-    { day: DAY_TODAY, text: "Sketch hero layout", depends_on: [], rationale: "Independent — coming back to Today." },
-    { day: DAY_WED, text: "Write pricing outline", depends_on: [], rationale: "Final open thread." },
-]
+// Day assignments for each agent plan item (index-matched to demo.plannerDemo.agentPlan)
+const AGENT_PLAN_DAYS = [DAY_TODAY, DAY_TODAY, DAY_WED, DAY_TODAY, DAY_WED]
 
 function planTimingFor(i) {
     const workingFromMs = PLAN_WORKING_FROM_MS + i * (STEP_DURATION_MS + STEP_GAP_MS)
     return { workingFromMs, doneAtMs: workingFromMs + STEP_DURATION_MS }
 }
-
-const PLAN_END_MS = planTimingFor(AGENT_PLAN.length - 1).doneAtMs
 
 // May 2026 grid (May 1 is a Friday)
 const MAY_2026 = [
@@ -59,6 +51,14 @@ function PlannerDemo() {
     const sectionRef = useRef(null)
     const [inView, setInView] = useState(false)
     const [elapsed, setElapsed] = useState(0)
+    const { t } = useLanguage()
+    const pd = t.plannerDemo
+    const demoPd = t.demo.plannerDemo
+
+    const TODAY_TASKS = useMemo(() => demoPd.todayTasks.map((text, i) => ({ text, ...TODAY_TASK_TIMINGS[i] })), [demoPd.todayTasks])
+    const TODAY_NOTE = useMemo(() => ({ text: demoPd.todayNote, ...TODAY_NOTE_TIMING }), [demoPd.todayNote])
+    const WED_TASKS = useMemo(() => demoPd.wedTasks.map((text, i) => ({ text, ...WED_TASK_TIMINGS[i] })), [demoPd.wedTasks])
+    const AGENT_PLAN = useMemo(() => demoPd.agentPlan.map((item, i) => ({ day: AGENT_PLAN_DAYS[i], text: item.text, depends_on: item.depends_on })), [demoPd.agentPlan])
 
     useEffect(() => {
         const el = sectionRef.current
@@ -85,6 +85,8 @@ function PlannerDemo() {
     }, [inView])
 
     const selectedDay = elapsed < SWITCH_TO_WED_MS ? DAY_TODAY : DAY_WED
+    const PLAN_END_MS = planTimingFor(AGENT_PLAN.length - 1).doneAtMs
+
     const agentPhase = (() => {
         if (elapsed < RUN_CLICK_MS) return "idle"
         if (elapsed < AGENT_THINKING_FROM_MS) return "click"
@@ -122,13 +124,13 @@ function PlannerDemo() {
 
             <div className="text-center">
                 <h2 className="font-[var(--font-display)] text-3xl font-semibold tracking-tight md:text-4xl">
-                    Plan a week.{' '}
+                    {pd.headline1}{' '}
                     <span className="bg-gradient-to-r from-emerald-300 via-amber-300 to-violet-300 bg-clip-text text-transparent">
-                        Ship in order.
+                        {pd.headline2}
                     </span>
                 </h2>
                 <p className="mx-auto mt-3 max-w-xl text-sm text-[var(--color-fg-muted)] md:text-base">
-                    Pick a day, jot down tasks, repeat for tomorrow. The agent reads your week, infers dependencies, and works whatever's ready first — even if that means jumping forward.
+                    {pd.subtitle}
                 </p>
             </div>
 
@@ -150,13 +152,13 @@ function PlannerDemo() {
                     </div>
 
                     {/* Status banner */}
-                    <AgentBanner phase={agentPhase} doneCount={doneCount} />
+                    <AgentBanner phase={agentPhase} doneCount={doneCount} agentPlan={AGENT_PLAN} pd={pd} />
 
                     {/* Three columns: Calendar | Daily note | Agent */}
                     <div className="grid min-h-[460px] grid-cols-1 md:grid-cols-[24%_minmax(0,1fr)_36%]">
-                        <CalendarPane selectedDay={selectedDay} elapsed={elapsed} />
-                        <DailyNotePane selectedDay={selectedDay} elapsed={elapsed} />
-                        <AgentPane phase={agentPhase} elapsed={elapsed} doneCount={doneCount} />
+                        <CalendarPane selectedDay={selectedDay} elapsed={elapsed} pd={pd} />
+                        <DailyNotePane selectedDay={selectedDay} elapsed={elapsed} todayTasks={TODAY_TASKS} wedTasks={WED_TASKS} todayNote={TODAY_NOTE} pd={pd} />
+                        <AgentPane phase={agentPhase} elapsed={elapsed} doneCount={doneCount} agentPlan={AGENT_PLAN} pd={pd} />
                     </div>
                 </div>
             </div>
@@ -164,18 +166,18 @@ function PlannerDemo() {
     )
 }
 
-function AgentBanner({ phase, doneCount }) {
+function AgentBanner({ phase, doneCount, agentPlan, pd }) {
     const messages = {
-        idle: "Pick a day, jot down tasks — the agent watches for what's ready.",
-        click: "Running the agent…",
-        thinking: "Reading your week and finding what's ready…",
-        running: `Working — ${doneCount} of ${AGENT_PLAN.length} done`,
-        done: `Done — ${AGENT_PLAN.length} of ${AGENT_PLAN.length} tasks`,
+        idle: pd.agentBanner.idle,
+        click: pd.agentBanner.click,
+        thinking: pd.agentBanner.thinking,
+        running: pd.agentBanner.running(doneCount, agentPlan.length),
+        done: pd.agentBanner.done(agentPlan.length),
     }
     const showSweep = phase === "thinking" || phase === "running"
-    const rightLabel = phase === "idle" ? "agent · idle"
-        : phase === "done" ? "✓ all clear"
-        : "agent · live"
+    const rightLabel = phase === "idle" ? pd.agentRight.idle
+        : phase === "done" ? pd.agentRight.done
+        : pd.agentRight.live
 
     return (
         <div className="relative flex items-center justify-between border-b border-[var(--color-line-soft)] bg-gradient-to-r from-emerald-500/[0.04] via-amber-500/[0.04] to-violet-500/[0.04] px-4 py-2">
@@ -195,7 +197,7 @@ function AgentBanner({ phase, doneCount }) {
 
 /* ----- Calendar pane (mini month grid) ------------------------------------ */
 
-function CalendarPane({ selectedDay, elapsed }) {
+function CalendarPane({ selectedDay, elapsed, pd }) {
     const todayNum = DAY_TODAY.num
     const wedNum = DAY_WED.num
     const showClick = elapsed >= SWITCH_TO_WED_MS - 250 && elapsed < SWITCH_TO_WED_MS + 350
@@ -204,13 +206,13 @@ function CalendarPane({ selectedDay, elapsed }) {
         <div className="flex flex-col gap-3 border-b border-[var(--color-line-soft)] p-4 md:border-b-0 md:border-r">
             <div className="flex items-center justify-between">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                    Calendar
+                    {pd.calendar}
                 </span>
                 <span className="text-[10px] text-[var(--color-fg-subtle)]">May 2026</span>
             </div>
 
             <div className="grid grid-cols-7 gap-1 text-center">
-                {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                {pd.weekdays.map((d, i) => (
                     <div key={i} className="text-[9px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
                         {d}
                     </div>
@@ -253,11 +255,11 @@ function CalendarPane({ selectedDay, elapsed }) {
             <div className="mt-auto space-y-1.5 text-[10px] text-[var(--color-fg-subtle)]">
                 <div className="flex items-center gap-1.5">
                     <span className="h-1 w-1 rounded-full bg-emerald-400" />
-                    <span>day with note</span>
+                    <span>{pd.dayWithNote}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-sm border border-emerald-500/50" />
-                    <span>today</span>
+                    <span>{pd.today}</span>
                 </div>
             </div>
         </div>
@@ -266,23 +268,23 @@ function CalendarPane({ selectedDay, elapsed }) {
 
 /* ----- Daily note pane ---------------------------------------------------- */
 
-function DailyNotePane({ selectedDay, elapsed }) {
+function DailyNotePane({ selectedDay, elapsed, todayTasks, wedTasks, todayNote, pd }) {
     const isToday = selectedDay.key === "today"
-    const tasks = isToday ? TODAY_TASKS : WED_TASKS
-    const note = isToday ? TODAY_NOTE : null
+    const tasks = isToday ? todayTasks : wedTasks
+    const note = isToday ? todayNote : null
 
     return (
         <div className="flex min-h-0 flex-col border-b border-[var(--color-line-soft)] bg-[var(--color-canvas)] md:border-b-0 md:border-r">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] bg-[var(--color-surface-1)] px-4 py-2">
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Daily note
+                        {pd.dailyNote}
                     </span>
                     <span className="text-[11px] text-[var(--color-fg-subtle)]">·</span>
                     <span className="text-[11px] text-[var(--color-fg-muted)]">{selectedDay.sub}</span>
                 </div>
                 <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                    {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+                    {tasks.length} {tasks.length === 1 ? pd.task : pd.tasks}
                 </span>
             </div>
 
@@ -346,35 +348,35 @@ function NoteText({ note, elapsed }) {
 
 /* ----- Agent pane --------------------------------------------------------- */
 
-function AgentPane({ phase, elapsed, doneCount }) {
+function AgentPane({ phase, elapsed, doneCount, agentPlan, pd }) {
     return (
         <div className="flex min-h-0 flex-col bg-[var(--color-surface-1)]">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Agent
+                        {pd.agent}
                     </span>
                     <span className="text-[11px] text-[var(--color-fg-subtle)]">·</span>
                     <span className="text-[11px] text-[var(--color-fg-muted)]">
-                        {phase === "idle" ? "5 open · 2 days" :
-                         phase === "click" || phase === "thinking" ? "Reasoning…" :
-                         phase === "running" ? `Working — ${doneCount}/${AGENT_PLAN.length}` :
-                         `Done — ${AGENT_PLAN.length}/${AGENT_PLAN.length}`}
+                        {phase === "idle" ? pd.agentHeader.idle :
+                         phase === "click" || phase === "thinking" ? pd.agentHeader.reasoning :
+                         phase === "running" ? pd.agentHeader.working(doneCount, agentPlan.length) :
+                         pd.agentHeader.done(agentPlan.length)}
                     </span>
                 </div>
-                <RunOrStatusBtn phase={phase} elapsed={elapsed} />
+                <RunOrStatusBtn phase={phase} elapsed={elapsed} pd={pd} />
             </div>
 
             <div className="flex-1 overflow-hidden px-4 py-3.5">
-                {phase === "idle" && <IdleBody />}
-                {(phase === "click" || phase === "thinking") && <ThinkingBody />}
-                {(phase === "running" || phase === "done") && <PlanBody elapsed={elapsed} />}
+                {phase === "idle" && <IdleBody pd={pd} />}
+                {(phase === "click" || phase === "thinking") && <ThinkingBody pd={pd} />}
+                {(phase === "running" || phase === "done") && <PlanBody elapsed={elapsed} agentPlan={agentPlan} pd={pd} />}
             </div>
         </div>
     )
 }
 
-function RunOrStatusBtn({ phase, elapsed }) {
+function RunOrStatusBtn({ phase, elapsed, pd }) {
     const showClick = elapsed >= RUN_CLICK_MS - 200 && elapsed < RUN_CLICK_MS + 300
     if (phase === "idle" || phase === "click") {
         return (
@@ -382,7 +384,7 @@ function RunOrStatusBtn({ phase, elapsed }) {
                 <button
                     className={`inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-black transition-transform ${showClick ? "scale-95" : ""}`}
                 >
-                    <SparkIcon size={11} /> Run
+                    <SparkIcon size={11} /> {pd.run}
                 </button>
                 {showClick && (
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -395,44 +397,44 @@ function RunOrStatusBtn({ phase, elapsed }) {
     return (
         <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            {phase === "done" ? "complete" : "running"}
+            {phase === "done" ? pd.complete : pd.running}
         </span>
     )
 }
 
-function IdleBody() {
+function IdleBody({ pd }) {
     return (
         <div className="space-y-2.5">
             <div className="rounded-lg border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] p-2.5">
                 <div className="text-[9px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                    Will read
+                    {pd.willRead}
                 </div>
                 <ul className="mt-1.5 space-y-0.5 text-[11px]">
                     <li className="flex items-center justify-between">
                         <span className="text-[var(--color-fg)]">Tue · May 5</span>
-                        <span className="text-[var(--color-fg-subtle)]">3 open</span>
+                        <span className="text-[var(--color-fg-subtle)]">3 {pd.open}</span>
                     </li>
                     <li className="flex items-center justify-between">
                         <span className="text-[var(--color-fg)]">Thu · May 7</span>
-                        <span className="text-[var(--color-fg-subtle)]">2 open</span>
+                        <span className="text-[var(--color-fg-subtle)]">2 {pd.open}</span>
                     </li>
                 </ul>
             </div>
             <p className="text-[10px] leading-relaxed text-[var(--color-fg-subtle)]">
-                The agent reads every day's tasks, infers dependencies, and orders them so ready tasks run first — even across days.
+                {pd.subtitle}
             </p>
         </div>
     )
 }
 
-function ThinkingBody() {
+function ThinkingBody({ pd }) {
     return (
         <div className="space-y-2.5">
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-fg-muted)]">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" />
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" style={{ animationDelay: "0.16s" }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 lp-dot" style={{ animationDelay: "0.32s" }} />
-                <span className="ml-1">Reading 5 tasks · finding what's ready</span>
+                <span className="ms-1">{pd.readingTasks}</span>
             </div>
             {[0, 1, 2].map(i => (
                 <div key={i} className="rounded-md border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] p-2">
@@ -444,22 +446,22 @@ function ThinkingBody() {
     )
 }
 
-function PlanBody({ elapsed }) {
+function PlanBody({ elapsed, agentPlan, pd }) {
     return (
         <div className="space-y-2 overflow-hidden">
             <div className="rounded-md border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-2.5 py-1.5 text-[10px] leading-relaxed text-[var(--color-fg-muted)]">
-                Picking ready tasks first — Today's #3 waits while Thu's mock starts early.
+                {pd.planNote}
             </div>
             <ol className="space-y-1.5">
-                {AGENT_PLAN.map((entry, i) => (
-                    <PlanItem key={i} index={i} entry={entry} elapsed={elapsed} />
+                {agentPlan.map((entry, i) => (
+                    <PlanItem key={i} index={i} entry={entry} elapsed={elapsed} needsLabel={pd.needs} />
                 ))}
             </ol>
         </div>
     )
 }
 
-function PlanItem({ index, entry, elapsed }) {
+function PlanItem({ index, entry, elapsed, needsLabel }) {
     const { workingFromMs, doneAtMs } = planTimingFor(index)
     const status =
         elapsed >= doneAtMs ? "done" :
@@ -493,7 +495,7 @@ function PlanItem({ index, entry, elapsed }) {
                     </div>
                     {entry.depends_on.length > 0 && status !== "done" && (
                         <div className="mt-0.5 text-[9px] text-[var(--color-fg-subtle)]">
-                            needs: {entry.depends_on.join(", ")}
+                            {needsLabel} {entry.depends_on.join(", ")}
                         </div>
                     )}
                 </div>

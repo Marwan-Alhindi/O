@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react"
+import { useLanguage } from "../../contexts/LanguageContext"
 import { useChatMessages } from "../hooks/useChatMessages"
 import { usePlannerNotes } from "../hooks/usePlannerNotes"
 import Message from "./chatView/message/Message"
@@ -25,14 +26,6 @@ const GROUP_KEYS = {
     chat: ['team', 'models', 'files'],
     planner: ['calendar', 'daily', 'agent'],
 }
-const PANEL_LABELS = {
-    team: 'Team chat',
-    models: 'Workspace',
-    files: 'Files',
-    calendar: 'Calendar',
-    daily: 'Daily note',
-    agent: 'Agent',
-}
 
 function getMentionableColor(target) {
     if (!target) return null
@@ -56,6 +49,18 @@ function getMentionableBadge(target) {
 }
 
 function Chat({ chatId }) {
+    const { t, lang } = useLanguage()
+    const tc = t.chat
+    const tp = t.tryItDemo.panels
+    const PANEL_LABELS = useMemo(() => ({
+        team: tp.team,
+        models: tp.workspace,
+        files: tp.files,
+        calendar: tp.calendar,
+        daily: tp.daily,
+        agent: tp.agent,
+    }), [tp])
+
     const [pendingLLMs, setPendingLLMs] = useState({}) // { llmId: true }
     const pendingLLMIdsRef = useRef(new Set())
     const sendingMessageRef = useRef(false)
@@ -725,7 +730,7 @@ function Chat({ chatId }) {
             const container = splitRef.current
             if (!container) return
             const rect = container.getBoundingClientRect()
-            const deltaPx = e.clientX - activeResize.startX
+            const deltaPx = (e.clientX - activeResize.startX) * (lang === 'ar' ? -1 : 1)
             const deltaPct = (deltaPx / rect.width) * 100
             const MIN = 15
             let newLeft = activeResize.startLeft + deltaPct
@@ -922,7 +927,7 @@ function Chat({ chatId }) {
                     <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-fg-muted)] lp-dot" />
                     <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-fg-muted)] lp-dot" style={{ animationDelay: '0.16s' }} />
                     <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-fg-muted)] lp-dot" style={{ animationDelay: '0.32s' }} />
-                    <span className="ml-2">Loading conversation…</span>
+                    <span className="ml-2">{tc.loading}</span>
                 </div>
             </div>
         )
@@ -933,13 +938,13 @@ function Chat({ chatId }) {
     const mentionDropdown = showMentionDropdown && (
         <div className="absolute bottom-full left-0 right-0 mb-2 max-h-80 overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl lp-scroll">
             {noMatches && (
-                <div className="px-3 py-2 text-xs text-[var(--color-fg-subtle)]">No matches — invite someone below</div>
+                <div className="px-3 py-2 text-xs text-[var(--color-fg-subtle)]">{tc.mentionNoMatches}</div>
             )}
 
             {filteredMentions.people.length > 0 && (
                 <>
                     <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        People
+                        {tc.people}
                     </div>
                     {filteredMentions.people.map(m => {
                         const c = getMentionableColor(m)
@@ -955,7 +960,7 @@ function Chat({ chatId }) {
                                     {badge.initials}
                                 </span>
                                 <span className="text-[var(--color-fg)]">@{m.display_name}</span>
-                                <span className={`text-xs ${c.text}`}>· teammate</span>
+                                <span className={`text-xs ${c.text}`}>· {tc.personSuffix}</span>
                             </button>
                         )
                     })}
@@ -968,7 +973,7 @@ function Chat({ chatId }) {
                         <div className="border-t border-[var(--color-line-soft)]" />
                     )}
                     <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Models
+                        {tc.models}
                     </div>
                     {filteredMentions.llms.map(m => {
                         const llm = m.llm
@@ -997,14 +1002,14 @@ function Chat({ chatId }) {
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => { clearMentionFragment(); setInviteLLMpop(true) }}
                 >
-                    <span className="text-base leading-none">+</span> Invite a new model
+                    <span className="text-base leading-none">+</span> {tc.inviteNewModel}
                 </button>
                 <button
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => { clearMentionFragment(); setShowInviteUser(true) }}
                 >
-                    <span className="text-base leading-none">+</span> Invite a teammate
+                    <span className="text-base leading-none">+</span> {tc.inviteTeammate}
                 </button>
             </div>
         </div>
@@ -1014,10 +1019,10 @@ function Chat({ chatId }) {
         <div className="absolute bottom-full left-0 right-0 mb-2 max-h-80 overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] shadow-2xl lp-scroll">
             <div className="border-b border-[var(--color-line-soft)] px-3 py-2">
                 <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                    Always Send To
+                    {tc.alwaysSendTo}
                 </div>
                 <div className="mt-1 text-xs text-[var(--color-fg-subtle)]">
-                    Applies only when the message has no manual @mention.
+                    {tc.alwaysSendToDesc}
                 </div>
             </div>
 
@@ -1034,22 +1039,22 @@ function Chat({ chatId }) {
                         <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ${stickyMentionColor.avatarBg} ${stickyMentionColor.avatarText}`}>
                             {stickyMentionBadge.initials}
                         </span>
-                        <span className="text-[var(--color-fg)]">Turn off default target</span>
-                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">Currently @{stickyMentionTarget.display_name}</span>
+                        <span className="text-[var(--color-fg)]">{tc.turnOffDefault}</span>
+                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">{tc.currentlyAt(stickyMentionTarget.display_name)}</span>
                     </button>
                 </div>
             )}
 
             {mentionGroups.people.length === 0 && mentionGroups.llms.length === 0 && (
                 <div className="px-3 py-3 text-xs text-[var(--color-fg-subtle)]">
-                    Invite a teammate or model first.
+                    {tc.inviteFirst}
                 </div>
             )}
 
             {mentionGroups.people.length > 0 && (
                 <>
                     <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        People
+                        {tc.people}
                     </div>
                     {mentionGroups.people.map(target => {
                         const c = getMentionableColor(target)
@@ -1073,7 +1078,7 @@ function Chat({ chatId }) {
                                 <span className={`text-xs ${c.text}`}>· {badge.detail}</span>
                                 {isActive && (
                                     <span className={`ml-auto rounded-full border px-1.5 py-0.5 text-[10px] ${c.softBorder} ${c.text}`}>
-                                        On
+                                        {tc.on}
                                     </span>
                                 )}
                             </button>
@@ -1088,7 +1093,7 @@ function Chat({ chatId }) {
                         <div className="border-t border-[var(--color-line-soft)]" />
                     )}
                     <div className="sticky top-0 z-10 bg-[var(--color-surface-2)] px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                        Models
+                        {tc.models}
                     </div>
                     {mentionGroups.llms.map(target => {
                         const c = getMentionableColor(target)
@@ -1112,7 +1117,7 @@ function Chat({ chatId }) {
                                 <span className={`text-xs ${c.text}`}>· {badge.detail}</span>
                                 {isActive && (
                                     <span className={`ml-auto rounded-full border px-1.5 py-0.5 text-[10px] ${c.softBorder} ${c.text}`}>
-                                        On
+                                        {tc.on}
                                     </span>
                                 )}
                             </button>
@@ -1139,7 +1144,7 @@ function Chat({ chatId }) {
             </span>
             <span className="min-w-0">
                 <span className="block max-w-[12rem] truncate text-xs text-[var(--color-fg)]">
-                    Always sending to <span className={`font-medium ${stickyMentionColor.text}`}>@{stickyMentionTarget.display_name}</span>
+                    {tc.alwaysSendingTo(stickyMentionTarget.display_name).split(`@${stickyMentionTarget.display_name}`).map((part, i, arr) => i < arr.length - 1 ? <span key={i}>{part}<span className={`font-medium ${stickyMentionColor.text}`}>@{stickyMentionTarget.display_name}</span></span> : <span key={i}>{part}</span>)}
                 </span>
             </span>
         </button>
@@ -1155,7 +1160,7 @@ function Chat({ chatId }) {
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-3)] text-[10px] font-semibold text-[var(--color-fg)]">
                 SA
             </span>
-            <span className="truncate text-xs font-medium">Ask Side is on</span>
+            <span className="truncate text-xs font-medium">{tc.sideAskOn}</span>
         </button>
     )
 
@@ -1168,13 +1173,13 @@ function Chat({ chatId }) {
 
     const SideContextBadge = ({ msg, align = "start" }) => (
         <span className={`mb-1 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line-soft)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-fg-muted)] ${align === "end" ? "self-end" : "self-start"}`}>
-            <span>Not in context</span>
+            <span>{tc.notInContext}</span>
             <button
                 onClick={() => includeMessageInContext(msg)}
                 className="rounded-full px-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
                 title="Add this message back to context"
             >
-                Add
+                {tc.addToContext}
             </button>
         </span>
     )
@@ -1187,9 +1192,9 @@ function Chat({ chatId }) {
                 active={!!stickyMentionTarget}
                 activeClass={stickyMentionTarget && stickyMentionColor ? `${stickyMentionColor.softBorder} ${stickyMentionColor.softBg} ${stickyMentionColor.text}` : ""}
                 icon={<TargetIcon />}
-                label="Always"
-                popoverTitle="Always send to"
-                popoverText="Pick a default person or model for messages that do not include a manual @mention."
+                label={tc.featureAlways}
+                popoverTitle={tc.alwaysPopoverTitle}
+                popoverText={tc.alwaysPopoverText}
                 onClick={() => {
                     if (stickyMentionTarget) {
                         setStickyMention(null)
@@ -1206,9 +1211,9 @@ function Chat({ chatId }) {
             <FeatureAction
                 active={sideAskActive}
                 icon={<SideAskIcon />}
-                label="Ask Side"
-                popoverTitle="Ask Side"
-                popoverText="Keep side questions and answers visible, but exclude them from future model context."
+                label={tc.featureAskSide}
+                popoverTitle={tc.sideAskPopoverTitle}
+                popoverText={tc.sideAskPopoverText}
                 onClick={() => {
                     setSideAskActive(v => !v)
                     setShowFeatureTray(false)
@@ -1219,16 +1224,16 @@ function Chat({ chatId }) {
             <FeatureAction
                 active={showFeatureMore}
                 icon={<MoreIcon />}
-                label="More"
+                label={tc.featureMore}
                 onClick={() => setShowFeatureMore(v => !v)}
             />
             {showFeatureMore && (
                 <div className="absolute bottom-11 right-0 w-52 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] py-1 shadow-2xl">
-                    <FeatureMoreItem icon={<AttachIcon />} label="Attach file" detail="Images, PDFs, code…" onClick={() => { fileInputRef.current?.click(); setShowFeatureMore(false) }} />
-                    <FeatureMoreItem icon={<WebIcon />} label="Web search" detail="Placeholder" />
-                    <FeatureMoreItem icon={<VoiceIcon />} label="Voice note" detail="Placeholder" />
+                    <FeatureMoreItem icon={<AttachIcon />} label={tc.attachFile} detail={tc.attachFileDetail} onClick={() => { fileInputRef.current?.click(); setShowFeatureMore(false) }} />
+                    <FeatureMoreItem icon={<WebIcon />} label={tc.webSearch} detail={tc.webSearchDetail} />
+                    <FeatureMoreItem icon={<VoiceIcon />} label={tc.voiceNote} detail={tc.voiceNoteDetail} />
                     <div className="my-1 border-t border-[var(--color-line-soft)]" />
-                    <FeatureMoreItem icon={<ExportIcon />} label="Export chat" detail="Placeholder" />
+                    <FeatureMoreItem icon={<ExportIcon />} label={tc.exportChat} detail={tc.exportChatDetail} />
                 </div>
             )}
         </div>
@@ -1308,7 +1313,7 @@ function Chat({ chatId }) {
                         <textarea
                             ref={inputRef}
                             rows={1}
-                            placeholder={isDragOver ? 'Drop files here…' : 'Message your team — type @ to mention people or models'}
+                            placeholder={isDragOver ? tc.dropPlaceholder : tc.messagePlaceholder}
                             value={inputText}
                             onChange={handleInputChange}
                             onKeyDown={(e) => {
@@ -1340,9 +1345,9 @@ function Chat({ chatId }) {
                 <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-[var(--color-fg)]">{chatName}</div>
                     <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-subtle)]">
-                        <span>{userCount} {userCount === 1 ? 'person' : 'people'}</span>
+                        <span>{tc.person(userCount)}</span>
                         <span>·</span>
-                        <span>{invitedLLMs.length} {invitedLLMs.length === 1 ? 'model' : 'models'}</span>
+                        <span>{tc.model(invitedLLMs.length)}</span>
                     </div>
                 </div>
                 <div className="ml-3 hidden items-center gap-2 md:flex">
@@ -1405,28 +1410,28 @@ function Chat({ chatId }) {
 
             <div className="flex items-center gap-2">
                 <div className="hidden items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 md:flex">
-                    <GroupBtn active={viewGroup === 'chat'} onClick={() => setViewGroup('chat')} icon={<ChatBubbleIcon />}>Chat</GroupBtn>
-                    <GroupBtn active={viewGroup === 'planner'} onClick={() => setViewGroup('planner')} icon={<CalendarIcon />}>Planner</GroupBtn>
+                    <GroupBtn active={viewGroup === 'chat'} onClick={() => setViewGroup('chat')} icon={<ChatBubbleIcon />}>{tc.chatGroup}</GroupBtn>
+                    <GroupBtn active={viewGroup === 'planner'} onClick={() => setViewGroup('planner')} icon={<CalendarIcon />}>{tc.plannerGroup}</GroupBtn>
                 </div>
                 <div className="hidden items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 md:flex">
                     {viewGroup === 'chat' ? (
                         <>
-                            <PanelToggleBtn active={openPanels.team} onClick={() => togglePanel('team')} label="Team chat"><PeopleIcon /></PanelToggleBtn>
-                            <PanelToggleBtn active={openPanels.models} onClick={() => togglePanel('models')} label="Workspace"><BotIcon /></PanelToggleBtn>
-                            <PanelToggleBtn active={openPanels.files} onClick={() => togglePanel('files')} label="Files"><FileIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.team} onClick={() => togglePanel('team')} label={PANEL_LABELS.team}><PeopleIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.models} onClick={() => togglePanel('models')} label={PANEL_LABELS.models}><BotIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.files} onClick={() => togglePanel('files')} label={PANEL_LABELS.files}><FileIcon /></PanelToggleBtn>
                         </>
                     ) : (
                         <>
-                            <PanelToggleBtn active={openPanels.calendar} onClick={() => togglePanel('calendar')} label="Calendar"><CalendarIcon /></PanelToggleBtn>
-                            <PanelToggleBtn active={openPanels.daily} onClick={() => togglePanel('daily')} label="Daily note"><NoteIcon /></PanelToggleBtn>
-                            <PanelToggleBtn active={openPanels.agent} onClick={() => togglePanel('agent')} label="Agent"><AgentIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.calendar} onClick={() => togglePanel('calendar')} label={PANEL_LABELS.calendar}><CalendarIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.daily} onClick={() => togglePanel('daily')} label={PANEL_LABELS.daily}><NoteIcon /></PanelToggleBtn>
+                            <PanelToggleBtn active={openPanels.agent} onClick={() => togglePanel('agent')} label={PANEL_LABELS.agent}><AgentIcon /></PanelToggleBtn>
                         </>
                     )}
                 </div>
                 {viewGroup === 'chat' && (
                     <div className="flex items-center gap-1">
-                        <IconBtn label="Invite model" onClick={() => setInviteLLMpop(true)}><BotIcon /></IconBtn>
-                        <IconBtn label="Invite teammate" onClick={() => setShowInviteUser(true)}><UserPlusIcon /></IconBtn>
+                        <IconBtn label={tc.inviteNewModel} onClick={() => setInviteLLMpop(true)}><BotIcon /></IconBtn>
+                        <IconBtn label={tc.inviteTeammate} onClick={() => setShowInviteUser(true)}><UserPlusIcon /></IconBtn>
                     </div>
                 )}
             </div>
@@ -1484,7 +1489,7 @@ function Chat({ chatId }) {
                                     </span>
                                 )}
                                 <span className="max-w-[7rem] truncate">
-                                    {tabPerson ? (isMe ? `${tabPerson.first_name} (you)` : tabPerson.first_name) : 'All'}
+                                    {tabPerson ? (isMe ? `${tabPerson.first_name} ${tc.youSuffix}` : tabPerson.first_name) : tc.allTab}
                                 </span>
                                 {teamTabs.length > 1 && (
                                     <span
@@ -1511,7 +1516,7 @@ function Chat({ chatId }) {
                 {/* Right: filter dropdown + message count */}
                 <div className="flex shrink-0 items-center gap-2 px-3 pb-1.5">
                     <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                        {teamFilterUserId ? `${teamShownCount} of ${teamTotalCount}` : `${teamShownCount}`} msgs
+                        {teamFilterUserId ? tc.msgsFiltered(teamShownCount, teamTotalCount) : tc.msgs(teamShownCount)}
                     </span>
                     <div className="relative" data-filter="team">
                         <button
@@ -1537,7 +1542,7 @@ function Chat({ chatId }) {
                                     <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--color-line-soft)] text-[var(--color-fg-subtle)]">
                                         <PeopleIcon />
                                     </span>
-                                    <span>All people</span>
+                                    <span>{tc.allPeople}</span>
                                     {!teamFilterUserId && <span className="ml-auto text-[var(--color-fg-subtle)]">✓</span>}
                                 </button>
                                 {teamPeopleList.length > 0 && <div className="border-t border-[var(--color-line-soft)]" />}
@@ -1555,7 +1560,7 @@ function Chat({ chatId }) {
                                             <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold ${isMe ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black' : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'}`}>
                                                 {initial}
                                             </span>
-                                            <span className="truncate">{isMe ? `${p.first_name} (you)` : p.first_name}</span>
+                                            <span className="truncate">{isMe ? `${p.first_name} ${tc.youSuffix}` : p.first_name}</span>
                                             {isActive && <span className="ml-auto text-[var(--color-fg-subtle)]">✓</span>}
                                         </button>
                                     )
@@ -1581,16 +1586,16 @@ function Chat({ chatId }) {
                         }
                         const isMe = msg.sender_user_id === user?.id
                         const profile = profilesById[msg.sender_user_id]
-                        const displayName = isMe ? 'You' : (profile?.first_name || 'User')
+                        const displayName = isMe ? tc.you : (profile?.first_name || 'User')
                         const avatarLetter = (displayName[0] || 'U').toUpperCase()
                         const isSideMessage = msg.included_in_context === false
                         return (
-                            <div key={msg.id} className={`flex items-start gap-3 lp-fade-in ${isMe ? 'flex-row-reverse' : ''}`}>
+                            <div key={msg.id} className={`flex items-start gap-3 lp-fade-in ${isMe ? 'flex-row-reverse rtl:flex-row' : 'rtl:flex-row-reverse'}`}>
                                 <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${isMe ? 'bg-gradient-to-br from-emerald-400 to-sky-400 text-black' : 'bg-[var(--color-surface-3)] text-[var(--color-fg)]'}`}>
                                     {avatarLetter}
                                 </div>
-                                <div className={`min-w-0 max-w-[88%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
-                                    <span className={`mb-1 text-[11px] text-[var(--color-fg-subtle)] ${isMe ? 'text-right' : ''}`}>{displayName}</span>
+                                <div className={`min-w-0 max-w-[88%] ${isMe ? 'items-end rtl:items-start' : 'items-start rtl:items-end'} flex flex-col`}>
+                                    <span className={`mb-1 text-[11px] text-[var(--color-fg-subtle)] ${isMe ? 'text-right' : 'rtl:text-left'}`}>{displayName}</span>
                                     {isSideMessage && (
                                         <SideContextBadge msg={msg} align={isMe ? "end" : "start"} />
                                     )}
@@ -1628,7 +1633,7 @@ function Chat({ chatId }) {
                     {workspaceTabs.map(tab => {
                         const isActive = tab.id === activeTabId
                         const tabLLM = tab.filterId ? invitedLLMs.find(l => l.id === tab.filterId) : null
-                        const tc = tabLLM ? getLLMColor(tabLLM.display_number) : null
+                        const tabColor = tabLLM ? getLLMColor(tabLLM.display_number) : null
                         const hasPending = tabLLM ? !!pendingLLMs[tabLLM.id] : Object.keys(pendingLLMs).length > 0
                         const isDragOver = dragOverTabId === tab.id && dragTabId !== tab.id
                         return (
@@ -1659,7 +1664,7 @@ function Chat({ chatId }) {
                                 } ${isDragOver ? 'border-l-2 border-l-[var(--color-brand)]' : ''}`}
                             >
                                 {tabLLM ? (
-                                    <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[7px] font-bold ${tc.avatarBg} ${tc.avatarText}`}>
+                                    <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[7px] font-bold ${tabColor.avatarBg} ${tabColor.avatarText}`}>
                                         {getLLMInitials(tabLLM.display_name)}
                                     </span>
                                 ) : (
@@ -1668,10 +1673,10 @@ function Chat({ chatId }) {
                                     </span>
                                 )}
                                 <span className="max-w-[7rem] truncate">
-                                    {tabLLM ? tabLLM.display_name : 'All'}
+                                    {tabLLM ? tabLLM.display_name : tc.allTab}
                                 </span>
                                 {hasPending && (
-                                    <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${tc ? tc.avatarBg : 'bg-[var(--color-fg-subtle)]'}`} />
+                                    <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${tabColor ? tabColor.avatarBg : 'bg-[var(--color-fg-subtle)]'}`} />
                                 )}
                                 {workspaceTabs.length > 1 && (
                                     <span
@@ -1711,7 +1716,7 @@ function Chat({ chatId }) {
                         >
                             <FilterIcon />
                             <span className="max-w-[7rem] truncate">
-                                {workspaceFilterLLM ? workspaceFilterLLM.display_name : 'All models'}
+                                {workspaceFilterLLM ? workspaceFilterLLM.display_name : tc.allModels}
                             </span>
                             <span className="text-[8px]">▾</span>
                         </button>
@@ -1723,7 +1728,7 @@ function Chat({ chatId }) {
                                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-fg)] hover:bg-[var(--color-surface-3)]"
                                 >
                                     <span className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--color-line-soft)] text-[var(--color-fg-subtle)]"><BotIcon /></span>
-                                    <span>All models</span>
+                                    <span>{tc.allModels}</span>
                                     {!workspaceFilterLLMId && <span className="ml-auto text-[var(--color-fg-subtle)]">✓</span>}
                                 </button>
                                 {invitedLLMs.length > 0 && <div className="border-t border-[var(--color-line-soft)]" />}
@@ -1751,7 +1756,7 @@ function Chat({ chatId }) {
                         onClick={() => setInviteLLMpop(true)}
                         className="text-[11px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] whitespace-nowrap"
                     >
-                        + Invite model
+                        {tc.inviteModel}
                     </button>
                 </div>
             </div>
@@ -1771,7 +1776,7 @@ function Chat({ chatId }) {
                                 return (
                                     <div key={msg.id} className="flex items-center justify-center py-1 lp-fade-in">
                                         <span className={`rounded-full border ${c.softBorder} ${c.softBg} px-3 py-1 text-[11px] ${c.text}`}>
-                                            {llmInfo?.display_name} joined the workspace
+                                            {tc.joinedWorkspace(llmInfo?.display_name || '')}
                                         </span>
                                     </div>
                                 )
@@ -1814,7 +1819,7 @@ function Chat({ chatId }) {
                                             )}
                                             {isRegenerating ? (
                                                 <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                                                    {hasStreamingText ? 'streaming…' : 'thinking…'}
+                                                    {hasStreamingText ? tc.streaming : tc.thinking}
                                                 </span>
                                             ) : (
                                                 <>
@@ -1875,14 +1880,14 @@ function Chat({ chatId }) {
                                             {getLLMInitials(llm.display_name)}
                                         </span>
                                         <span className={`text-sm font-medium ${c.text}`}>{llm.display_name}</span>
-                                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">{hasText ? 'streaming…' : 'thinking…'}</span>
+                                        <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">{hasText ? tc.streaming : tc.thinking}</span>
                                         <button
                                             onClick={stopGeneration}
                                             className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-300 hover:bg-rose-500/20 hover:text-rose-200"
                                             title="Stop generation"
                                         >
                                             <span className="h-2 w-2 rounded-sm bg-rose-300" />
-                                            Stop
+                                            {tc.stop}
                                         </button>
                                     </header>
                                     {hasText ? (
@@ -1931,10 +1936,10 @@ function Chat({ chatId }) {
         <section className="flex min-h-0 flex-1 flex-col border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:border-l">
             <div className="flex items-center justify-between border-b border-[var(--color-line-soft)] px-4 py-2">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-fg-subtle)]">
-                    Files
+                    {tc.files}
                 </span>
                 <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                    {generatedFiles.length} {generatedFiles.length === 1 ? 'file' : 'files'}
+                    {tc.fileCount(generatedFiles.length)}
                 </span>
             </div>
             <div className="lp-scroll flex-1 space-y-2 overflow-y-auto px-4 py-4">
@@ -1953,7 +1958,7 @@ function Chat({ chatId }) {
                                     <div className="truncate text-sm text-[var(--color-fg)]">{f.name}</div>
                                     <div className="text-[10px] text-[var(--color-fg-subtle)]">
                                         {llm && c && (<><span className={c.text}>{llm.display_name}</span> · </>)}
-                                        {fileTimeAgo(f.created_at)}
+                                        {fileTimeAgo(f.created_at, tc)}
                                     </div>
                                 </div>
                                 <a
@@ -1962,7 +1967,7 @@ function Chat({ chatId }) {
                                     rel="noreferrer"
                                     className="rounded-lg border border-[var(--color-line)] px-3 py-1 text-[11px] text-[var(--color-fg-muted)] hover:border-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-fg)]"
                                 >
-                                    Open ↗
+                                    {tc.openFile}
                                 </a>
                             </div>
                         )
@@ -1983,14 +1988,14 @@ function Chat({ chatId }) {
                                 <TrashIcon />
                             </span>
                             <div className="min-w-0">
-                                <p className="text-base font-semibold text-[var(--color-fg)]">Delete this message?</p>
+                                <p className="text-base font-semibold text-[var(--color-fg)]">{tc.deleteTitle}</p>
                                 <p className="truncate text-xs text-[var(--color-fg-muted)]">
                                     {(deleteMessageTarget.content || "").slice(0, 80) || "(empty)"}
                                 </p>
                             </div>
                         </div>
                         <p className="mb-5 text-sm text-[var(--color-fg-muted)]">
-                            Other participants will see a tombstone where this message used to be. The model won't see it on regeneration.
+                            {tc.deleteDesc}
                         </p>
                         <div className="flex items-center justify-end gap-2">
                             <button
@@ -1998,14 +2003,14 @@ function Chat({ chatId }) {
                                 disabled={deleteMessagePending}
                                 className="rounded-lg px-3 py-2 text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)] disabled:opacity-40"
                             >
-                                Cancel
+                                {tc.cancel}
                             </button>
                             <button
                                 onClick={confirmDeleteMessage}
                                 disabled={deleteMessagePending}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400 disabled:opacity-40"
                             >
-                                {deleteMessagePending ? 'Deleting…' : 'Delete message'}
+                                {deleteMessagePending ? tc.deleting : tc.deleteConfirm}
                             </button>
                         </div>
                     </div>
@@ -2046,8 +2051,8 @@ function Chat({ chatId }) {
             {/* Mobile group + tab toggle */}
             <div className="flex items-center border-b border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:hidden">
                 <div className="flex items-center gap-0.5 rounded-lg border border-[var(--color-line)] p-0.5 m-2">
-                    <GroupBtn active={viewGroup === 'chat'} onClick={() => setViewGroup('chat')} icon={<ChatBubbleIcon />}>Chat</GroupBtn>
-                    <GroupBtn active={viewGroup === 'planner'} onClick={() => setViewGroup('planner')} icon={<CalendarIcon />}>Planner</GroupBtn>
+                    <GroupBtn active={viewGroup === 'chat'} onClick={() => setViewGroup('chat')} icon={<ChatBubbleIcon />}>{tc.chatGroup}</GroupBtn>
+                    <GroupBtn active={viewGroup === 'planner'} onClick={() => setViewGroup('planner')} icon={<CalendarIcon />}>{tc.plannerGroup}</GroupBtn>
                 </div>
                 <div className="flex flex-1">
                     {GROUP_KEYS[viewGroup].filter(k => openPanels[k]).map(k => (
@@ -2179,39 +2184,41 @@ function FeatureMoreItem({ icon, label, detail, onClick }) {
 }
 
 function EmptyTeam() {
+    const { t } = useLanguage()
+    const tc = t.chat
     return (
         <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface-1)] text-[var(--color-fg-muted)]">
                 <ChatIcon />
             </div>
-            <p className="text-sm font-medium text-[var(--color-fg)]">Start the conversation</p>
+            <p className="text-sm font-medium text-[var(--color-fg)]">{tc.startConversation}</p>
             <p className="mt-1 max-w-xs text-xs text-[var(--color-fg-muted)]">
-                Type a message to your team. Use <span className="rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 font-mono text-[10px]">@</span> to ask a model.
+                {tc.startConversationDesc}
             </p>
         </div>
     )
 }
 
 function EmptyModels({ onInvite, hasModels }) {
+    const { t } = useLanguage()
+    const tc = t.chat
     return (
         <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]">
                 <BotIcon />
             </div>
             <p className="text-sm font-medium text-[var(--color-fg)]">
-                {hasModels ? 'Mention a model in chat' : 'No models yet'}
+                {hasModels ? tc.mentionModel : tc.noModels}
             </p>
             <p className="mt-1 max-w-xs text-xs text-[var(--color-fg-muted)]">
-                {hasModels
-                    ? 'Type @ followed by a model name to send it the prompt. Replies appear here.'
-                    : 'Invite a model to your workspace to get started.'}
+                {hasModels ? tc.mentionModelDesc : tc.noModelsDesc}
             </p>
             {!hasModels && (
                 <button
                     onClick={onInvite}
                     className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-black hover:bg-[var(--color-brand)]"
                 >
-                    Invite a model →
+                    {tc.inviteModelBtn}
                 </button>
             )}
         </div>
@@ -2253,28 +2260,28 @@ function PanelToggleBtn({ children, active, onClick, label }) {
     )
 }
 function EmptyFiles() {
+    const { t } = useLanguage()
+    const tc = t.chat
     return (
         <div className="flex h-full flex-col items-center justify-center px-6 text-center">
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-fg-subtle)]">
                 <FileIcon />
             </span>
-            <p className="mt-3 text-sm text-[var(--color-fg-muted)]">No files yet</p>
-            <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
-                Files generated by tools (PDFs, slides, etc.) will appear here.
-            </p>
+            <p className="mt-3 text-sm text-[var(--color-fg-muted)]">{tc.noFiles}</p>
+            <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">{tc.noFilesDesc}</p>
         </div>
     )
 }
-function fileTimeAgo(iso) {
+function fileTimeAgo(iso, tc) {
     if (!iso) return ""
     const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-    if (seconds < 60) return "just now"
+    if (seconds < 60) return tc.justNow
     const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return `${minutes}m ago`
+    if (minutes < 60) return tc.minutesAgo(minutes)
     const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours}h ago`
+    if (hours < 24) return tc.hoursAgo(hours)
     const days = Math.floor(hours / 24)
-    return `${days}d ago`
+    return tc.daysAgo(days)
 }
 
 export default Chat
