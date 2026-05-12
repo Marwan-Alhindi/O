@@ -121,6 +121,9 @@ def oauth_callback(code: str = "", state: str = "", error: str = ""):
             f"<script>window.opener?.postMessage({{type:'oauth_error',detail:{json.dumps(error)}}},'*');window.close();</script>"
         )
 
+    if not code or not state:
+        return HTMLResponse("<script>window.close();</script>")
+
     state_data = _verify_state(state)
     llm_id = state_data["llm_id"]
     integration_type = state_data["integration_type"]

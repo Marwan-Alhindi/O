@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { supabase } from "../../services/supabase"
 
 export function useChatMessages(chatId, { onLLMReply } = {}) {
@@ -7,6 +7,7 @@ export function useChatMessages(chatId, { onLLMReply } = {}) {
     const [invitedLLMs, setInvitedLLMs] = useState([])
     const [profilesById, setProfilesById] = useState({})
     const [loading, setLoading] = useState(true)
+    const fetchingProfilesRef = useRef(new Set())
 
     useEffect(() => {
         if (!chatId) return
@@ -79,18 +80,19 @@ export function useChatMessages(chatId, { onLLMReply } = {}) {
                         }
 
                         if (fullMsg.sender_type === 'user' && fullMsg.sender_user_id) {
-                            setProfilesById(prev => {
-                                if (prev[fullMsg.sender_user_id]) return prev
+                            const uid = fullMsg.sender_user_id
+                            if (!fetchingProfilesRef.current.has(uid)) {
+                                fetchingProfilesRef.current.add(uid)
                                 supabase
                                     .from("profiles")
                                     .select("id, first_name")
-                                    .eq("id", fullMsg.sender_user_id)
+                                    .eq("id", uid)
                                     .single()
                                     .then(({ data }) => {
-                                        if (data) setProfilesById(p => ({ ...p, [data.id]: data }))
+                                        fetchingProfilesRef.current.delete(uid)
+                                        if (data) setProfilesById(p => p[data.id] ? p : { ...p, [data.id]: data })
                                     })
-                                return prev
-                            })
+                            }
                         }
                     }
                 }

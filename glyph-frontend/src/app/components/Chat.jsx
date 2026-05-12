@@ -18,7 +18,7 @@ import {
 } from "./Icons"
 import { API_BASE, apiFetch, apiUpload } from "../../services/supabase"
 import { useAuth } from "../../contexts/AuthContext"
-import { getLLMColor, getLLMInitials, getPersonColor, modelTypeLabel } from "../utils/llmColors"
+import { getLLMColor, getLLMInitials, getPersonColor } from "../utils/llmColors"
 import { findMentions, isMentionPrefix } from "../utils/mentions"
 
 const GROUP_KEYS = {
@@ -46,7 +46,7 @@ function getMentionableBadge(target) {
     if (target.kind === 'llm') {
         return {
             initials: getLLMInitials(target.display_name),
-            detail: modelTypeLabel(target.llm.model_type),
+            detail: `#${target.llm.display_number}`,
         }
     }
     return {
@@ -984,7 +984,6 @@ function Chat({ chatId }) {
                                     {getLLMInitials(llm.display_name)}
                                 </span>
                                 <span className="text-[var(--color-fg)]">@{llm.display_name}</span>
-                                <span className="text-xs text-[var(--color-fg-subtle)]">· {modelTypeLabel(llm.model_type)}</span>
                                 <span className="ml-auto text-[10px] text-[var(--color-fg-subtle)]">#{llm.display_number}</span>
                             </button>
                         )
@@ -1387,7 +1386,7 @@ function Chat({ chatId }) {
                                     <button
                                         key={llm.id}
                                         onClick={() => openContext(llm.id)}
-                                        title={`${llm.display_name} · ${modelTypeLabel(llm.model_type)}`}
+                                        title={llm.display_name}
                                         className={`flex h-7 w-7 items-center justify-center rounded-full ring-2 ring-[var(--color-surface-1)] ${c.avatarBg} ${c.avatarText} text-[10px] font-semibold hover:z-10 hover:scale-110 transition-transform`}
                                     >
                                         {getLLMInitials(llm.display_name)}
@@ -1805,7 +1804,7 @@ function Chat({ chatId }) {
                                                     {llmInfo?.display_name || 'LLM'}
                                                 </span>
                                                 <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                                                    {modelTypeLabel(llmInfo?.model_type)} · #{llmInfo?.display_number}
+                                                    #{llmInfo?.display_number}
                                                 </span>
                                             </span>
                                         </button>

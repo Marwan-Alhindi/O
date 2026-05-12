@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { apiFetch } from "../../../../services/supabase"
-import { getLLMColor, getLLMInitials, modelTypeLabel } from "../../../utils/llmColors"
+import { getLLMColor, getLLMInitials } from "../../../utils/llmColors"
 import { findMentions } from "../../../utils/mentions"
 
 const INTEGRATIONS_CATALOG = [
@@ -196,7 +196,6 @@ function LLMContext({ llm, messages, invitedLLMs = [], onClose }) {
                             <p className={`text-sm font-semibold ${c.text}`}>
                                 {llm.display_name} <span className="text-[var(--color-fg-subtle)] font-normal">· #{llm.display_number}</span>
                             </p>
-                            <p className="text-[11px] text-[var(--color-fg-muted)]">{modelTypeLabel(llm.model_type)}</p>
                         </div>
                     </div>
                     <button

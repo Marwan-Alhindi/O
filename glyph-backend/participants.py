@@ -107,6 +107,22 @@ def invite_llm(body: InviteLLMRequest, authorization: str = Header()):
             "target_type": c.target_type,
             "target_llm_id": c.target_llm_id if c.target_type == "llm" else None,
         })
+
+    target_ids = [c.target_llm_id for c in body.connections if c.target_type == "llm" and c.target_llm_id]
+    if target_ids:
+        valid_rows = (
+            supabase.table("invited_llms")
+            .select("id")
+            .eq("chat_id", body.chat_id)
+            .in_("id", target_ids)
+            .execute()
+            .data or []
+        )
+        valid_ids = {r["id"] for r in valid_rows}
+        bad = [t for t in target_ids if t not in valid_ids]
+        if bad:
+            raise HTTPException(status_code=400, detail="target_llm_id does not belong to this chat")
+
     if conn_rows:
         supabase.table("llm_connections").insert(conn_rows).execute()
 
