@@ -140,11 +140,28 @@ def execute_code(code: str, language: str = "python") -> str:
 
     if language == "python":
         # Preamble: force Agg backend BEFORE user code imports matplotlib so
-        # no GUI window opens, and no-op plt.show() so figures stay open for capture.
+        # no GUI window opens. Intercept savefig/show so any chart the model
+        # saves (even to /tmp) lands in CHARTS_DIR and emits a GLYPH_IMG URL.
         preamble = f"""\
 import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as _plt_noop
+import os as _os_pre, uuid as _uuid_pre
+
+_CHARTS_DIR_PRE = {CHARTS_DIR!r}
+_API_BASE_PRE   = {PUBLIC_API_BASE!r}
+_os_pre.makedirs(_CHARTS_DIR_PRE, exist_ok=True)
+
+_orig_savefig = _plt_noop.savefig
+def _glyph_savefig(fname=None, *args, **kwargs):
+    import uuid as _u2, os as _o2
+    _name = f"chart-{{_u2.uuid4().hex[:8]}}.png"
+    _dest = _o2.join(_CHARTS_DIR_PRE, _name)
+    kwargs.setdefault("dpi", 120)
+    kwargs.setdefault("bbox_inches", "tight")
+    _orig_savefig(_dest, *args, **kwargs)
+    print(f"GLYPH_IMG:{{_API_BASE_PRE}}/charts/{{_name}}")
+_plt_noop.savefig = _glyph_savefig
 _plt_noop.show = lambda *_a, **_kw: None
 """
         # Postamble: save every open figure and print GLYPH_IMG: markers.
@@ -395,6 +412,12 @@ def create_pdf(title: str, content: str) -> str:
 
     def _resolve_image(url: str) -> str | None:
         """Return a local file path for the image, fetching remote URLs if needed."""
+        # Strip sandbox: prefix models sometimes emit for local paths
+        if url.startswith("sandbox:"):
+            url = url[len("sandbox:"):]
+        # Bare local path
+        if url.startswith("/") and os.path.isfile(url):
+            return url
         for prefix, local_dir in _url_to_local.items():
             if url.startswith(prefix):
                 local_path = local_dir + url[len(prefix):]
@@ -461,12 +484,17 @@ def create_pdf(title: str, content: str) -> str:
             story.append(Paragraph(_inline_markup(block[2:]), heading1_style))
             continue
 
-        # Mixed block: might contain inline images among text lines
+        # Mixed block: might contain inline images among text lines.
+        # Use re.search so "Visualization ![alt](url)" still extracts the image.
         lines = block.split("\n")
         text_lines = []
         for line in lines:
-            inline_img = re.fullmatch(r"!\[([^\]]*)\]\(([^)]+)\)", line.strip())
+            inline_img = re.search(r"!\[([^\]]*)\]\(([^)]+)\)", line)
             if inline_img:
+                # Any text before the image tag goes into the text flow
+                pre = line[:inline_img.start()].strip()
+                if pre:
+                    text_lines.append(pre)
                 # Flush accumulated text first
                 if text_lines:
                     html = _inline_markup("<br/>".join(text_lines))
