@@ -15,6 +15,7 @@ create index if not exists llm_integrations_llm_id_idx on public.llm_integration
 alter table public.llm_integrations enable row level security;
 
 -- Users can manage integrations for LLMs in chats they participate in
+drop policy if exists "chat_participant" on public.llm_integrations;
 create policy "chat_participant" on public.llm_integrations for all
     using (
         exists (

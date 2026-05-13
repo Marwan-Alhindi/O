@@ -7,7 +7,8 @@ circular-import dance — invitations.py and the agents can import these directl
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
-from supabase import create_client
+from supabase import create_client, ClientOptions
+import httpx
 import jwt
 
 
@@ -23,7 +24,16 @@ os.makedirs(FILES_DIR, exist_ok=True)
 
 
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
-supabase = create_client(os.getenv("SUPABASE_URL"), SUPABASE_SERVICE_KEY)
+supabase = create_client(
+    os.getenv("SUPABASE_URL"),
+    SUPABASE_SERVICE_KEY,
+    options=ClientOptions(
+        httpx_client=httpx.Client(
+            http2=False,
+            limits=httpx.Limits(max_keepalive_connections=5, keepalive_expiry=30),
+        )
+    ),
+)
 
 jwks_client = jwt.PyJWKClient(f"{os.getenv('SUPABASE_URL')}/auth/v1/.well-known/jwks.json")
 
