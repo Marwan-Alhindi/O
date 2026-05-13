@@ -439,18 +439,46 @@ def create_pdf(title: str, content: str) -> str:
     heading1_style = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=16, spaceAfter=8)
     heading2_style = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=13, spaceAfter=6)
     heading3_style = ParagraphStyle("h3", parent=styles["Heading3"], fontSize=11, spaceAfter=4)
+    code_style = ParagraphStyle(
+        "code", parent=styles["Code"],
+        fontName="Courier", fontSize=8, leading=11,
+        leftIndent=12, rightIndent=12,
+        backColor="#1a1a1a" if False else None,  # noqa: simplify later
+    )
 
     def _inline_markup(text: str) -> str:
         text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
         text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", text)
         return text
 
+    def _escape_xml(text: str) -> str:
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    # Pre-extract fenced code blocks before splitting on blank lines, so blank
+    # lines inside a code block don't cause it to be split into separate paragraphs.
+    _code_map: dict[str, str] = {}
+    def _extract_code_blocks(text: str) -> str:
+        def _replacer(m: re.Match) -> str:
+            key = f"\x00CODE{len(_code_map)}\x00"
+            _code_map[key] = m.group(2)  # content between the fences
+            return f"\n\n{key}\n\n"
+        return re.sub(r"```([a-zA-Z0-9_-]*)\n?(.*?)```", _replacer, text, flags=re.DOTALL)
+
+    processed_content = _extract_code_blocks(content.strip())
+
     story: list = [Paragraph(title, styles["Title"]), Spacer(1, 14)]
     page_width = LETTER[0] - 2 * inch  # usable width inside default margins
 
-    for block in re.split(r"\n\s*\n", content.strip()):
+    for block in re.split(r"\n\s*\n", processed_content):
         block = block.strip()
         if not block:
+            continue
+
+        # Fenced code block (extracted above and keyed by \x00CODEn\x00)
+        if block in _code_map:
+            for line in _code_map[block].split("\n"):
+                story.append(Paragraph(_escape_xml(line) or " ", code_style))
+            story.append(Spacer(1, 8))
             continue
 
         # Markdown image: ![alt](url) — embed as a real image
@@ -475,13 +503,13 @@ def create_pdf(title: str, content: str) -> str:
 
         # Headings
         if block.startswith("### "):
-            story.append(Paragraph(_inline_markup(block[4:]), heading3_style))
+            story.append(Paragraph(_inline_markup(_escape_xml(block[4:])), heading3_style))
             continue
         if block.startswith("## "):
-            story.append(Paragraph(_inline_markup(block[3:]), heading2_style))
+            story.append(Paragraph(_inline_markup(_escape_xml(block[3:])), heading2_style))
             continue
         if block.startswith("# "):
-            story.append(Paragraph(_inline_markup(block[2:]), heading1_style))
+            story.append(Paragraph(_inline_markup(_escape_xml(block[2:])), heading1_style))
             continue
 
         # Mixed block: might contain inline images among text lines.
@@ -517,7 +545,8 @@ def create_pdf(title: str, content: str) -> str:
             else:
                 text_lines.append(line)
         if text_lines:
-            html = _inline_markup("<br/>".join(text_lines))
+            safe_lines = [_escape_xml(l) for l in text_lines]
+            html = _inline_markup("<br/>".join(safe_lines))
             story.append(Paragraph(html, styles["BodyText"]))
         story.append(Spacer(1, 8))
 
