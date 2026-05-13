@@ -10,12 +10,11 @@ import LLMContext from "./chatView/context/LLMContext"
 import UserContext from "./chatView/context/UserContext"
 import Calendar from "./plannerView/Calendar"
 import DailyNote from "./plannerView/DailyNote"
-import Agent from "./plannerView/Agent"
 import {
     SendIcon, TargetIcon, FeatureIcon, SideAskIcon, MoreIcon, AttachIcon,
     WebIcon, VoiceIcon, ExportIcon, RefreshIcon, BotIcon, UserPlusIcon,
     PeopleIcon, FilterIcon, TrashIcon, FileIcon, CalendarIcon, NoteIcon,
-    AgentIcon, ChatBubbleIcon, ChatIcon, XIcon, ImageIcon,
+    ChatBubbleIcon, ChatIcon, XIcon, ImageIcon,
 } from "./Icons"
 import { API_BASE, apiFetch, apiUpload } from "../../services/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -24,7 +23,7 @@ import { findMentions, isMentionPrefix } from "../utils/mentions"
 
 const GROUP_KEYS = {
     chat: ['team', 'models', 'files'],
-    planner: ['calendar', 'daily', 'agent'],
+    planner: ['calendar', 'daily'],
 }
 
 function getMentionableColor(target) {
@@ -58,7 +57,6 @@ function Chat({ chatId }) {
         files: tp.files,
         calendar: tp.calendar,
         daily: tp.daily,
-        agent: tp.agent,
     }), [tp])
 
     const [pendingLLMs, setPendingLLMs] = useState({}) // { llmId: true }
@@ -194,20 +192,19 @@ function Chat({ chatId }) {
                     team: saved.team ?? 47,
                     models: saved.models ?? 53,
                     files: saved.files ?? 0,
-                    calendar: saved.calendar ?? 24,
-                    daily: saved.daily ?? 42,
-                    agent: saved.agent ?? 34,
+                    calendar: saved.calendar ?? 38,
+                    daily: saved.daily ?? 62,
                 }
             }
             // Migrate from the older two-pane key
             const oldTeamPct = parseFloat(localStorage.getItem("glyph.teamWidthPct"))
             if (Number.isFinite(oldTeamPct) && oldTeamPct >= 20 && oldTeamPct <= 80) {
-                return { team: oldTeamPct, models: 100 - oldTeamPct, files: 0, calendar: 24, daily: 42, agent: 34 }
+                return { team: oldTeamPct, models: 100 - oldTeamPct, files: 0, calendar: 38, daily: 62 }
             }
         } catch {
             // Ignore malformed saved layout preferences.
         }
-        return { team: 47, models: 53, files: 0, calendar: 24, daily: 42, agent: 34 }
+        return { team: 47, models: 53, files: 0, calendar: 38, daily: 62 }
     })
     const [isResizing, setIsResizing] = useState(false)
     const [activeResize, setActiveResize] = useState(null)
@@ -221,13 +218,12 @@ function Chat({ chatId }) {
                     files: !!saved.files,
                     calendar: saved.calendar !== false,
                     daily: saved.daily !== false,
-                    agent: saved.agent !== false,
                 }
             }
         } catch {
             // Ignore malformed saved panel preferences.
         }
-        return { team: true, models: true, files: false, calendar: true, daily: true, agent: true }
+        return { team: true, models: true, files: false, calendar: true, daily: true }
     })
     const [viewGroup, setViewGroup] = useState(() => {
         const saved = localStorage.getItem("glyph.viewGroup")
@@ -543,7 +539,11 @@ function Chat({ chatId }) {
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}))
                 console.error("Backend ask error:", err)
-                alert("LLM error: " + (err.detail || res.statusText))
+                if (res.status === 429) {
+                    alert(err.detail || "Usage limit reached. Upgrade your plan or try again later.")
+                } else {
+                    alert("LLM error: " + (err.detail || res.statusText))
+                }
                 clearIfOwned(llm.id)
                 return
             }
@@ -1428,7 +1428,6 @@ function Chat({ chatId }) {
                         <>
                             <PanelToggleBtn active={openPanels.calendar} onClick={() => togglePanel('calendar')} label={PANEL_LABELS.calendar}><CalendarIcon /></PanelToggleBtn>
                             <PanelToggleBtn active={openPanels.daily} onClick={() => togglePanel('daily')} label={PANEL_LABELS.daily}><NoteIcon /></PanelToggleBtn>
-                            <PanelToggleBtn active={openPanels.agent} onClick={() => togglePanel('agent')} label={PANEL_LABELS.agent}><AgentIcon /></PanelToggleBtn>
                         </>
                     )}
                 </div>
@@ -1957,9 +1956,6 @@ function Chat({ chatId }) {
         />
     )
 
-    const agentPane = <Agent chatId={chatId} notes={notes} />
-
-
     /* ---------- Files pane ---------- */
     const filesPane = (
         <section className="flex min-h-0 flex-1 flex-col border-[var(--color-line-soft)] bg-[var(--color-surface-1)] md:border-l">
@@ -2103,7 +2099,6 @@ function Chat({ chatId }) {
                     files: filesPane,
                     calendar: calendarPane,
                     daily: dailyPane,
-                    agent: agentPane,
                 }
                 const panels = GROUP_KEYS[viewGroup]
                     .filter(k => openPanels[k])

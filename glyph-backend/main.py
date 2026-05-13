@@ -3,10 +3,10 @@
 Domain logic lives elsewhere:
 - config.py     — env, OpenAI/Supabase/JWKS clients, LangSmith setup
 - auth.py       — JWT + chat membership
-- schemas.py    — pydantic request/response models for /askLLM and /planAgent
+- schemas.py    — pydantic request/response models for /askLLM
 - context.py    — chat history → messages with llm_connections filtering
 - tools.py      — agent tools (web_search, create_pdf)
-- agents/       — chat_agent, planner_agent, join_agent
+- agents/       — chat_agent, join_agent
 - chats         — chat lifecycle (create/rename/pin/leave)
 - messages      — message CRUD (insert/edit/delete/include_in_context)
 - participants  — invite LLMs + participants manifest
@@ -22,9 +22,9 @@ from fastapi.staticfiles import StaticFiles
 
 from config import CHARTS_DIR, FILES_DIR, PDFS_DIR, setup_tracing
 from auth import get_current_user, verify_participant
-from schemas import AskLLMRequest, PlanAgentRequest
+from schemas import AskLLMRequest
 from agents.chat_agent import run_agent_stream
-from agents.planner_agent import run_planner
+from usage import check_and_gate, get_usage_summary
 from chats import router as chats_router
 from messages import router as messages_router
 from participants import router as participants_router
@@ -58,10 +58,17 @@ def read_root():
     return {"message": "Welcome to Langpulse backend"}
 
 
+@app.get("/usage")
+def usage_summary(authorization: str = Header()):
+    user_id = get_current_user(authorization)
+    return get_usage_summary(user_id)
+
+
 @app.post("/askLLM")
 def ask_llm(body: AskLLMRequest, authorization: str = Header()):
     user_id = get_current_user(authorization)
     verify_participant(user_id, body.chat_id)
+    check_and_gate(user_id)
     return StreamingResponse(
         run_agent_stream(
             body.chat_id,
@@ -77,14 +84,6 @@ def ask_llm(body: AskLLMRequest, authorization: str = Header()):
             "Connection": "keep-alive",
         },
     )
-
-
-@app.post("/planAgent")
-def plan_agent(body: PlanAgentRequest, authorization: str = Header()):
-    user_id = get_current_user(authorization)
-    verify_participant(user_id, body.chat_id)
-    result = run_planner(body.chat_id)
-    return result.model_dump()
 
 
 app.include_router(chats_router)
