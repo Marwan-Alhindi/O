@@ -376,6 +376,7 @@ export const ar = {
     sideAskPopoverText: 'أبقِ الأسئلة الجانبية مرئية، لكن استبعدها من سياق النموذج المستقبلي.',
     messagePlaceholder: 'رسالة لفريقك — اكتب @ لذكر أشخاص أو نماذج',
     dropPlaceholder: 'أسقط الملفات هنا...',
+    dropToAttach: 'أسقط الملفات للإرفاق',
     person: (n) => `${n} ${n === 1 ? 'شخص' : 'أشخاص'}`,
     model: (n) => `${n} ${n === 1 ? 'نموذج' : 'نماذج'}`,
     streaming: 'جارٍ البث...',
@@ -428,6 +429,8 @@ export const ar = {
     foundationCatalog: {
       glyph: { label: 'قليف (تلقائي)', desc: 'قليف يختار أفضل إعداد عام متاح.' },
       openai: { label: 'ChatGPT (GPT-4o)', desc: 'نموذج GPT متعدد الأغراض مع أدوات قليف.' },
+      anthropic: { label: 'كلود (Sonnet 4.6)', desc: 'نموذج كلود من Anthropic — قوي في الاستدلال والسياق الطويل.' },
+      gemini: { label: 'Gemini 2.0 Flash', desc: 'نموذج Gemini من Google — سريع ومتعدد الوسائط وقادر على البحث.' },
     },
   },
 }

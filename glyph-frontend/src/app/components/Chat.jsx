@@ -107,6 +107,7 @@ function Chat({ chatId }) {
     const [inputText, setInputText] = useState("")
     const [pendingAttachments, setPendingAttachments] = useState([]) // [{url,mime_type,filename,size,localPreview?,uploading?}]
     const [isDragOver, setIsDragOver] = useState(false)
+    const [isPaneDragOver, setIsPaneDragOver] = useState(false)
     const fileInputRef = useRef(null)
     const [InviteLLMpop, setInviteLLMpop] = useState(false)
     const [deleteMessageTarget, setDeleteMessageTarget] = useState(null)
@@ -256,7 +257,7 @@ function Chat({ chatId }) {
         return `glyph.stickyMention.${user.id}.${chatId}`
     }, [chatId, user?.id])
 
-    async function handleInviteLLM(name, _modelType, instructions, connections) {
+    async function handleInviteLLM(name, modelType, instructions, connections) {
         // Backend owns the full flow now: create LLM row, persist connections,
         // post the join message. The frontend just hands over user intent.
         const connectionsPayload = connections.map(c => c === "user"
@@ -271,6 +272,7 @@ function Chat({ chatId }) {
                     chat_id: chatId,
                     display_name: name,
                     model_instruct: instructions,
+                    model_type: modelType || 'openai',
                     connections: connectionsPayload,
                 },
             })
@@ -1247,7 +1249,9 @@ function Chat({ chatId }) {
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false) }}
             onDrop={(e) => {
                 e.preventDefault()
+                e.stopPropagation()
                 setIsDragOver(false)
+                setIsPaneDragOver(false)
                 handleFilesSelected(e.dataTransfer.files)
             }}
         >
@@ -1442,7 +1446,32 @@ function Chat({ chatId }) {
     const teamShownCount = teamMessages.filter(m => m.sender_type === 'user').length
     const teamTotalCount = teamMessagesAll.filter(m => m.sender_type === 'user').length
     const teamPane = (
-        <section className="flex min-h-0 flex-1 flex-col bg-[var(--color-canvas)]">
+        <section
+            className="relative flex min-h-0 flex-1 flex-col bg-[var(--color-canvas)]"
+            onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('Files')) {
+                    e.preventDefault()
+                    setIsPaneDragOver(true)
+                }
+            }}
+            onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) setIsPaneDragOver(false)
+            }}
+            onDrop={(e) => {
+                if (!e.dataTransfer.types.includes('Files')) return
+                e.preventDefault()
+                setIsPaneDragOver(false)
+                handleFilesSelected(e.dataTransfer.files)
+            }}
+        >
+            {isPaneDragOver && (
+                <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[var(--color-brand)]/10">
+                    <div className="rounded-2xl border-2 border-dashed border-[var(--color-brand)] bg-[var(--color-surface-1)]/90 px-12 py-8 text-center shadow-2xl">
+                        <div className="mb-2 text-3xl text-[var(--color-brand)]">↓</div>
+                        <div className="text-sm font-medium text-[var(--color-brand)]">{tc.dropToAttach}</div>
+                    </div>
+                </div>
+            )}
             {/* Chrome-style tab bar */}
             <div className="flex items-end border-b border-[var(--color-line-soft)] bg-[var(--color-surface-2)]">
                 {/* Scrollable tab strip */}

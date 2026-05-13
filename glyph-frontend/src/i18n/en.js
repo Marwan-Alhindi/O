@@ -377,6 +377,7 @@ export const en = {
     sideAskPopoverText: 'Keep side questions and answers visible, but exclude them from future model context.',
     messagePlaceholder: 'Message your team — type @ to mention people or models',
     dropPlaceholder: 'Drop files here…',
+    dropToAttach: 'Drop files to attach',
     person: (n) => `${n} ${n === 1 ? 'person' : 'people'}`,
     model: (n) => `${n} ${n === 1 ? 'model' : 'models'}`,
     streaming: 'streaming…',
@@ -429,6 +430,8 @@ export const en = {
     foundationCatalog: {
       glyph: { label: 'Glyph (auto)', desc: 'Glyph chooses the best general setup available.' },
       openai: { label: 'ChatGPT (GPT-4o)', desc: 'General-purpose GPT model with Glyph tools.' },
+      anthropic: { label: 'Claude (Sonnet 4.6)', desc: 'Anthropic\'s Claude — strong at reasoning and long context.' },
+      gemini: { label: 'Gemini 2.0 Flash', desc: 'Google\'s Gemini — fast, multimodal, and research-capable.' },
     },
   },
 }

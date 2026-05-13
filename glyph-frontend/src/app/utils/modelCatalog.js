@@ -54,6 +54,18 @@ export const FOUNDATION_MODELS = [
     defaultName: "GPT",
     description: "General-purpose GPT model with Glyph tools.",
   },
+  {
+    id: "anthropic",
+    label: "Claude (Sonnet 4.6)",
+    defaultName: "Claude",
+    description: "Anthropic's Claude — strong at reasoning and long context.",
+  },
+  {
+    id: "gemini",
+    label: "Gemini 2.0 Flash",
+    defaultName: "Gemini",
+    description: "Google's Gemini — fast, multimodal, and research-capable.",
+  },
 ]
 
 export function findSpecialist(modelType) {

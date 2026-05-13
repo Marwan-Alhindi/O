@@ -19,7 +19,9 @@ import json
 from dataclasses import dataclass, field
 
 from langchain.agents import create_agent
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.errors import GraphRecursionError
 
@@ -46,10 +48,22 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-# Model is reused across requests; the agent itself is built per-request so
+# Models are cached by model_type; the agent itself is built per-request so
 # context-aware tools (delegate) can close over chat_id / sender_llm_id /
 # the participants list.
-_chat_model = ChatOpenAI(model="gpt-4o", streaming=True)
+_model_cache: dict[str, object] = {}
+
+def _get_chat_model(model_type: str | None):
+    key = model_type or "openai"
+    if key not in _model_cache:
+        if key == "anthropic":
+            _model_cache[key] = ChatAnthropic(model="claude-sonnet-4-6", streaming=True)
+        elif key == "gemini":
+            _model_cache[key] = ChatGoogleGenerativeAI(model="gemini-2.0-flash", streaming=True)
+        else:
+            # openai, glyph, glyph_* specialists, or any unrecognised type
+            _model_cache[key] = ChatOpenAI(model="gpt-4o", streaming=True)
+    return _model_cache[key]
 
 
 def _build_tool_context(chat_id: str, sender_llm_id: str) -> ToolContext:
@@ -182,7 +196,8 @@ async def _run_agent_once(
     # Only the user-addressed root model can delegate. Delegated models answer
     # their task directly, which keeps one user turn to one visible reply per
     # involved model instead of model-to-model loops.
-    agent = create_agent(model=_chat_model, tools=get_tools(tool_ctx if allow_delegation else None))
+    chat_model = _get_chat_model(llm.get("model_type"))
+    agent = create_agent(model=chat_model, tools=get_tools(tool_ctx if allow_delegation else None))
 
     final_messages = None
     final_text = ""

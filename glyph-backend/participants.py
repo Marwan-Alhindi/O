@@ -42,6 +42,7 @@ class InviteLLMRequest(BaseModel):
     chat_id: str
     display_name: str
     model_instruct: str = ""
+    model_type: str = "openai"
     connections: list[LLMConnectionInput] = Field(default_factory=list)
 
 
@@ -89,6 +90,7 @@ def invite_llm(body: InviteLLMRequest, authorization: str = Header()):
             "chat_id": body.chat_id,
             "display_name": name,
             "model_instruct": body.model_instruct or "",
+            "model_type": body.model_type or "openai",
             "display_number": display_number,
             "invited_by": user_id,
         })
