@@ -18,5 +18,5 @@ jobs:
       - name: Push to Bitbucket
         run: |
           git remote add bitbucket git@bitbucket.org:glypho/glyph.git
-          git push bitbucket --all
-          git push bitbucket --tags
+          git push bitbucket --all --force
+          git push bitbucket --tags --force
