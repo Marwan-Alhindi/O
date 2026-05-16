@@ -56,16 +56,28 @@ def _sse(payload: dict) -> str:
 _model_cache: dict[str, object] = {}
 
 def _get_chat_model(model_type: str | None):
-    key = model_type or "openai"
+    key = model_type or "glyph"
     if key not in _model_cache:
-        if key == "anthropic":
-            _model_cache[key] = ChatAnthropic(model="claude-sonnet-4-6", streaming=True)
+        if key == "openai":
+            _model_cache[key] = ChatOpenAI(model="gpt-4o", streaming=True)
         elif key == "gemini":
             _model_cache[key] = ChatGoogleGenerativeAI(model="gemini-2.0-flash", streaming=True)
         else:
-            # openai, glyph, glyph_* specialists, or any unrecognised type
-            _model_cache[key] = ChatOpenAI(model="gpt-4o", streaming=True)
+            # anthropic, glyph, glyph_* specialists, or any unrecognised type → Claude
+            # thinking budget_tokens=8000 gives the model space to reason before replying;
+            # max_tokens must exceed budget_tokens to leave room for the actual response.
+            _model_cache[key] = ChatAnthropic(
+                model="claude-sonnet-4-6",
+                streaming=True,
+                thinking={"type": "enabled", "budget_tokens": 8000},
+                max_tokens=16000,
+            )
     return _model_cache[key]
+
+
+def _is_claude(model_type: str | None) -> bool:
+    """True for every model type that routes to a Claude-backed instance."""
+    return (model_type or "glyph") not in ("openai", "gemini")
 
 
 def _build_tool_context(chat_id: str, sender_llm_id: str) -> ToolContext:
@@ -190,6 +202,7 @@ async def _run_agent_once(
             up_to_message_id=replace_message_id,
             include_message_id=side_message_id,
             force_include_message_ids=force_include_message_ids,
+            cache_system_prompt=_is_claude(llm.get("model_type")),
         )
     except Exception as e:
         yield _sse({"type": "error", "llm_id": llm_id, "detail": f"Failed to load context: {e}"})
@@ -219,6 +232,13 @@ async def _run_agent_once(
             if kind == "on_chat_model_stream":
                 chunk = event["data"].get("chunk")
                 content = getattr(chunk, "content", "") or ""
+                # Extended thinking streams thinking and text as separate content blocks.
+                # Only forward text blocks to the client.
+                if isinstance(content, list):
+                    content = "".join(
+                        block.get("text", "") for block in content
+                        if isinstance(block, dict) and block.get("type") == "text"
+                    )
                 if content:
                     yield _sse({"type": "token", "llm_id": llm_id, "content": content})
             elif kind == "on_tool_start":

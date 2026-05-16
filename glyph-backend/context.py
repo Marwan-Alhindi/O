@@ -19,6 +19,7 @@ def build_context_messages(
     up_to_message_id: str | None = None,
     include_message_id: str | None = None,
     force_include_message_ids: set[str] | None = None,
+    cache_system_prompt: bool = False,
 ) -> list[BaseMessage]:
     """Return the conversation history as LangChain messages.
 
@@ -66,7 +67,16 @@ def build_context_messages(
 
     messages: list[BaseMessage] = []
     if system_prompt:
-        messages.append(SystemMessage(content=system_prompt))
+        if cache_system_prompt:
+            # Mark the system prompt as a cache breakpoint so Anthropic reuses it
+            # across requests for the same LLM — avoids reprocessing on every turn.
+            messages.append(SystemMessage(content=[{
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }]))
+        else:
+            messages.append(SystemMessage(content=system_prompt))
 
     force_visible_ids: set[str] = set()
     if include_message_id:
